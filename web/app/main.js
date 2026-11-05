@@ -38,6 +38,8 @@ async function boot() {
     },
     onCaptured: () => (shotSinceList = true),
   });
+  // 確かめ用（?debug を付けて開いたときだけ）: 撮る画面の中の値を外から見られるようにする
+  if (new URLSearchParams(location.search).has("debug")) window.__cam = camera;
   document.getElementById("lib-camera").onclick = () => showCamera();
 
   function showCamera() {

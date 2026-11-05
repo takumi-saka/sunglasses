@@ -39,9 +39,9 @@ const tab = async (name) => {
   await page.evaluate((n) => [...document.querySelectorAll(".tab")].find((t) => t.textContent === n).click(), name);
   await page.waitForTimeout(500);
 };
-for (const [name, file] of [["核", "04_核"], ["明るさ", "05_明るさ"], ["色", "06_色"], ["色ごと", "07_色ごと"], ["グレーディング", "08_グレーディング"], ["効果", "09_効果"], ["細部", "10_細部"], ["切り抜き", "11_切り抜き"]]) {
+for (const [name, file] of [["ルック", "04_ルック"], ["ライト", "05_ライト"], ["カラー", "06_カラー"], ["カラーミックス", "07_カラーミックス"], ["グレーディング", "08_グレーディング"], ["効果", "09_効果"], ["ディテール", "10_ディテール"], ["切り抜き", "11_切り抜き"]]) {
   await tab(name);
-  if (name === "核") await page.waitForTimeout(1200);
+  if (name === "ルック") await page.waitForTimeout(1200);
   await shot(file);
 }
 

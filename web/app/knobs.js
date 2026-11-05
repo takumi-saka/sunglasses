@@ -17,10 +17,10 @@ export const KNOBS = {
   texture: { label: "テクスチャ" },
   clarity: { label: "明瞭度" },
   dehaze: { label: "かすみの除去" },
-  vignette: { label: "周辺光量" },
-  grain: { label: "粒", min: -100, max: 200, fmt: pct },
-  grainSize: { label: "粒の大きさ", min: -50, max: 50 },
-  halation: { label: "にじみ（赤）", min: -100, max: 200, fmt: pct },
+  vignette: { label: "周辺光量補正" },
+  grain: { label: "粒子", min: -100, max: 200, fmt: pct },
+  grainSize: { label: "粒子のサイズ", min: -50, max: 50 },
+  halation: { label: "ハレーション", min: -100, max: 200, fmt: pct },
   bloom: { label: "白み", min: -100, max: 200, fmt: pct },
   soften: { label: "やわらかさ", min: -100, max: 200, fmt: pct },
   sharpen: { label: "シャープ", min: 0, max: 150 },
@@ -38,14 +38,14 @@ for (const k of Object.values(KNOBS)) {
 
 // 下の板の並び。「よく使う」は 本人がよく動かすもの（露光量・白み・色温度・彩度・粒）
 export const GROUPS = [
-  { id: "core", name: "核" },
+  { id: "core", name: "ルック" },
   { id: "basic", name: "よく使う", knobs: ["exposure", "bloom", "temp", "saturation", "grain"] },
-  { id: "light", name: "明るさ", knobs: ["exposure", "contrast", "highlights", "shadows", "whites", "blacks"], curve: true },
-  { id: "color", name: "色", knobs: ["temp", "tint", "vibrance", "saturation"], bw: true },
-  { id: "mix", name: "色ごと" },
+  { id: "light", name: "ライト", knobs: ["exposure", "contrast", "highlights", "shadows", "whites", "blacks"], curve: true },
+  { id: "color", name: "カラー", knobs: ["temp", "tint", "vibrance", "saturation"], bw: true },
+  { id: "mix", name: "カラーミックス" },
   { id: "grade", name: "グレーディング" },
   { id: "effect", name: "効果", knobs: ["texture", "clarity", "dehaze", "vignette", "grain", "grainSize", "halation", "bloom", "soften"] },
-  { id: "detail", name: "細部", knobs: ["sharpen", "noise", "colorNoise"] },
+  { id: "detail", name: "ディテール", knobs: ["sharpen", "noise", "colorNoise"] },
   { id: "crop", name: "切り抜き" },
 ];
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0b0b0b">
+<meta name="theme-color" content="#000000">
 <meta name="sg-version" content="__VERSION__">
 <title>サングラス</title>
 <link rel="stylesheet" href="app/style.css">
@@ -13,11 +13,11 @@
   <header class="lib-top">
     <div class="brand"><span class="brand-ja">サングラス</span><span class="brand-en">SUNGLASSES</span></div>
     <span id="lib-count" class="lib-count"></span>
-    <button id="lib-open" class="pill">ファイルから開く</button>
-    <button id="lib-camera" class="pill accent">撮る</button>
+    <button id="lib-open" class="lib-import"><svg viewBox="0 0 24 24"><path d="M12 4v10m-4-4 4 4 4-4M5 15v4h14v-4"/></svg><span>読み込み</span></button>
   </header>
   <div id="lib-banner"></div>
   <div id="lib-list" class="lib-list"></div>
+  <div class="lib-shoot"><button id="lib-camera" class="shoot-btn"><span class="knurl"></span><span>撮影</span></button></div>
 </section>
 
 <section id="editor" class="screen ed" hidden>
@@ -27,7 +27,7 @@
     <button id="ed-undo" class="icon-btn" aria-label="1つ戻す"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
     <button id="ed-redo" class="icon-btn" aria-label="やり直す"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
     <button id="ed-more" class="icon-btn" aria-label="ほかの操作"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></button>
-    <button id="ed-export" class="pill accent">書き出す</button>
+    <button id="ed-export" class="ed-export">書き出し</button>
   </header>
   <div id="ed-photo" class="ed-photo">
     <canvas id="photo-canvas"></canvas>
@@ -50,9 +50,9 @@
     <div class="cam-sets">
       <button id="cam-set-frame" class="cam-set rot"><span>枠</span><b></b></button>
       <button id="cam-set-timer" class="cam-set rot"><span>タイマー</span><b></b></button>
-      <button id="cam-set-zebra" class="cam-set rot"><span>白飛びの縞</span><b></b></button>
-      <button id="cam-set-sound" class="cam-set rot"><span>音</span><b></b></button>
-      <button id="cam-set-jpeg" class="cam-set rot"><span>JPEG も</span><b></b></button>
+      <button id="cam-set-zebra" class="cam-set rot"><span>ゼブラ</span><b></b></button>
+      <button id="cam-set-sound" class="cam-set rot"><span>シャッター音</span><b></b></button>
+      <button id="cam-set-jpeg" class="cam-set rot"><span>JPEG</span><b></b></button>
     </div>
   </header>
   <div id="cam-view" class="cam-view">
@@ -65,14 +65,12 @@
   </div>
   <div class="cam-info"><span id="cam-readout" class="cam-readout"></span><span id="cam-count" class="cam-count"></span><canvas id="cam-hist" class="hist"></canvas></div>
   <div id="cam-lenses" class="chips cam-lenses"></div>
+  <div id="cam-pro" class="cam-pro"></div>
   <div id="cam-ev" class="cam-ev"></div>
   <div class="cam-bottom">
     <button id="cam-thumb" class="cam-thumb rot" aria-label="撮った写真を開く"></button>
-    <button id="cam-shutter" class="cam-shutter" aria-label="撮る"></button>
-    <div class="cam-right">
-      <button id="cam-core" class="cam-core rot"></button>
-      <button id="cam-raw" class="mini-btn rot">押して素の画</button>
-    </div>
+    <button id="cam-shutter" class="cam-shutter" aria-label="撮影"></button>
+    <button id="cam-core" class="cam-core rot" aria-label="ルック（たたくと切り替え、長押しで元の画）"></button>
   </div>
 </section>
 <script type="module" src="app/main.js"></script>

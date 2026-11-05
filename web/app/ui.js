@@ -111,6 +111,113 @@ export function slider({ label, min, max, step = 1, value, def = 0, fmt, track =
   return { el, set: (nv) => ((v = nv), render()), get: () => v };
 }
 
+// ---------- 輪のつまみ（撮る画面、2026-11-06）----------
+// レンズの鏡筒の輪を回すように、刻んだ目盛りの帯が左右に動き、真ん中の琥珀色の印は動かない。
+// 値は stops（[{ v, label, mark: "major" | "minor" | null, gap }]）の中から選ぶ。gap は次の目盛りまでの幅（ピクセル）。
+// 指を動かした分だけ回る（置いた所へ飛ばない）。tick(i) が真の目盛りを越えたときだけ手応え。snaps の所で軽く止まる。
+// 2 回たたくと onReset。set() は、自動の値を指すときのように、目盛りの途中（小数）も指せる。
+export function ring({ label, stops, index = 0, px = 16, fmt, extra = null, onInput, onReset = null, tick = () => false, snaps = [] }) {
+  let cur = index, dragging = false, startX = 0, startPos = 0, moved = false, lastTap = 0, readonly = false, inSnap = false;
+  const xs = [0];
+  for (let i = 1; i < stops.length; i++) xs.push(xs[i - 1] + (stops[i - 1].gap || px));
+  const xAt = (p) => {
+    const i = Math.max(0, Math.min(stops.length - 1, Math.floor(p)));
+    return i >= stops.length - 1 ? xs[i] : xs[i] + (xs[i + 1] - xs[i]) * (p - i);
+  };
+  const posAt = (x) => {
+    if (x <= 0) return 0;
+    for (let i = 0; i < stops.length - 1; i++) if (x < xs[i + 1]) return i + (x - xs[i]) / (xs[i + 1] - xs[i]);
+    return stops.length - 1;
+  };
+  const valEl = h("span", { class: "rg-val" });
+  const labelEl = h("span", { class: "rg-label" }, label);
+  const strip = h("div", { class: "rg-strip" }, stops.flatMap((s, i) => [
+    s.mark ? h("i", { class: "rg-tick" + (s.mark === "major" ? " is-major" : ""), style: { left: xs[i] + "px" } }) : null,
+    s.label !== undefined && s.label !== null ? h("span", { class: "rg-lab", style: { left: xs[i] + "px" } }, s.label) : null,
+  ]));
+  const el = h("div", { class: "rg", role: "slider", "aria-label": label },
+    h("div", { class: "rg-head" }, labelEl, extra, valEl), h("div", { class: "rg-scale" }, strip, h("i", { class: "rg-index" })));
+
+  function place(p, animate) {
+    strip.style.transition = animate ? "transform .2s cubic-bezier(.2,.8,.2,1)" : "none";
+    strip.style.transform = `translateX(${-xAt(p)}px)`;
+  }
+  function render() {
+    valEl.textContent = fmt ? fmt(stops[cur].v, cur) : String(stops[cur].v);
+    el.setAttribute("aria-valuetext", valEl.textContent);
+  }
+  function choose(i) {
+    if (i === cur) return;
+    const lo = Math.min(cur, i), hi = Math.max(cur, i);
+    let t = false;
+    for (let k = lo; k <= hi; k++) if (k !== cur && tick(k)) t = true;
+    cur = i;
+    if (t) haptic("tick");
+    render();
+    if (onInput) onInput(stops[i].v, i);
+  }
+  el.addEventListener("pointerdown", (e) => {
+    if (readonly || (extra && extra.contains(e.target))) return;
+    const now = performance.now();
+    if (now - lastTap < 320) {
+      lastTap = 0;
+      if (onReset) onReset();
+      return;
+    }
+    lastTap = now;
+    dragging = true;
+    moved = false;
+    startX = e.clientX;
+    startPos = cur;
+    inSnap = snaps.includes(cur);
+    el.setPointerCapture(e.pointerId);
+    el.classList.add("is-active");
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 3) moved = true;
+    if (!moved) return;
+    let p = posAt(xAt(startPos) - dx);
+    const s = snaps.find((k) => Math.abs(xAt(p) - xAt(k)) < 9);
+    if (s !== undefined) {
+      if (!inSnap) haptic("detent");
+      inSnap = true;
+      p = s;
+    } else inSnap = false;
+    place(p, false);
+    choose(Math.round(p));
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    el.classList.remove("is-active");
+    place(cur, true);
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+  place(cur, false);
+  render();
+  return {
+    el,
+    // 自動の値を指す（指で回しているときは動かさない）。p は小数でもよい
+    set(p, animate = true) {
+      if (dragging) return;
+      cur = Math.max(0, Math.min(stops.length - 1, Math.round(p)));
+      place(Math.max(0, Math.min(stops.length - 1, p)), animate);
+      render();
+    },
+    get: () => cur,
+    setText: (t) => (valEl.textContent = t),
+    setLabel: (t) => (labelEl.textContent = t),
+    setReadonly(on) {
+      readonly = on;
+      el.classList.toggle("is-readonly", on);
+    },
+    isDragging: () => dragging,
+  };
+}
+
 // ---------- 知らせ ----------
 let toastEl = null, toastTimer = 0;
 export function toast(text, actions = [], ms = 4000) {

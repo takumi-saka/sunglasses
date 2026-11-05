@@ -88,15 +88,28 @@ export function searchEv(medianAt, target) {
   return (lo + hi) / 2;
 }
 
-// 核の画（対応表）での真ん中の明るさ
-export function medianCore(small, key, ev, lut, ap0ToAp1) {
+// 重みつきの真ん中（重みを足していって半分を超えた所）
+export function weightedMedian(L, w) {
+  const idx = Array.from(L.keys()).sort((a, b) => L[a] - L[b]);
+  let total = 0;
+  for (let i = 0; i < w.length; i++) total += w[i];
+  let acc = 0;
+  for (const i of idx) {
+    acc += w[i];
+    if (acc >= total / 2) return L[i];
+  }
+  return L[idx[idx.length - 1]];
+}
+
+// 核の画（対応表）での真ん中の明るさ。weights を渡すと、重みつきの真ん中（撮る画面で、たたいた所を重く測るとき）
+export function medianCore(small, key, ev, lut, ap0ToAp1, weights = null) {
   const g = (0.18 / key) * Math.pow(2, ev), n = small.length / 3, L = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const v = mul3(ap0ToAp1, small[i * 3] * g, small[i * 3 + 1] * g, small[i * 3 + 2] * g);
     const o = lut.apply(acescct(Math.max(v[0], 0)), acescct(Math.max(v[1], 0)), acescct(Math.max(v[2], 0)));
     L[i] = lightness(o[0], o[1], o[2]);
   }
-  return median(L);
+  return weights ? weightedMedian(L, weights) : median(L);
 }
 
 // 素直な現像（sRGB の光の量 → 明るい所の肩 → sRGB の曲線 → 中くらいのコントラストの曲線）

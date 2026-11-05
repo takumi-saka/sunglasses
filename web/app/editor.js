@@ -75,7 +75,9 @@ export class Editor {
     this.root.hidden = false;
     this.root.classList.remove("is-full");
     document.getElementById("ed-name").textContent = item.name || "";
-    document.getElementById("ed-sub").textContent = item.dateTaken ? new Date(item.dateTaken).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    // 撮った日時: 2024年7月18日 14:07（普通の写真アプリと同じ書き方）
+    const dt = item.dateTaken ? new Date(item.dateTaken) : null;
+    document.getElementById("ed-sub").textContent = dt ? `${dt.getFullYear()}年${dt.getMonth() + 1}月${dt.getDate()}日 ${dt.getHours()}:${String(dt.getMinutes()).padStart(2, "0")}` : "";
     this.engine.canvas.style.opacity = "0";
     this.preview.style.setProperty("--rot", "0deg");
     this.preview.classList.remove("is-turned");
@@ -384,7 +386,7 @@ export class Editor {
       onClick: () => this.showGroup(g.id),
     }, g.name)));
     const core = this.engine.coreById(this.params ? this.params.core : AUTO_CORE);
-    this.coreChip.replaceChildren(h("span", { class: "engrave" }, "核"), " ", core.name, this.params && this.params.core === AUTO_CORE ? h("span", { class: "auto" }, "自動") : "");
+    this.coreChip.replaceChildren(h("small", {}, "ルック"), h("b", {}, core.name), this.params && this.params.core === AUTO_CORE ? h("span", { class: "auto" }, "自動") : "");
   }
 
   showGroup(id) {
@@ -536,7 +538,7 @@ export class Editor {
     const clip = pref("clipboard");
     const row = (label, sub, fn, disabled) => h("button", { class: "menu-row", disabled: disabled ? "disabled" : null, onClick: () => (closeSheet(), fn()) }, label, h("small", {}, sub));
     sheet("ほかの操作", h("div", { class: "sheet-body" },
-      row("直しをコピー", "核・つまみの値を覚える（切り抜きは含めない）", () => {
+      row("直しをコピー", "ルック・つまみの値を覚える（切り抜きは含めない）", () => {
         const { crop, ...rest } = clone(this.params);
         pref("clipboard", rest);
         toast("直しをコピーしました。ほかの写真で「貼り付け」できます");
@@ -548,7 +550,7 @@ export class Editor {
         this.renderPanel();
         bridge.haptic("confirm");
       }, !clip),
-      row("すべて戻す", "核とつまみを最初の状態に戻す（1つ戻すで取り消せる）", () => {
+      row("すべて戻す", "ルックとつまみを最初の状態に戻す（1つ戻すで取り消せる）", () => {
         this.params = { ...defaultParams(), core: AUTO_CORE };
         this.engine.setParams(this.params);
         this.commit();
@@ -571,7 +573,7 @@ export class Editor {
         h("input", { type: "checkbox", class: "toggle", onChange: (e) => (loc = e.target.checked) })),
       h("p", { class: "note" }, "カメラの写真と同じ所（DCIM/Camera）に、撮った日時のまま保存します。元の RAW はそのままです。"),
       h("button", { class: "btn-primary", onClick: () => (closeSheet(), this.doExport(size, loc)) }, "ギャラリーに書き出す"));
-    sheet("書き出す", body);
+    sheet("書き出し", body);
   }
 
   async doExport(maxSide, copyLocation) {

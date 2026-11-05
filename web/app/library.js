@@ -59,13 +59,18 @@ export class Library {
     const groups = new Map();
     for (const it of items) {
       const d = new Date(it.dateTaken || 0);
-      const k = d.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(it);
+      const k = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      if (!groups.has(k)) groups.set(k, { d, arr: [] });
+      groups.get(k).arr.push(it);
     }
     const frag = [];
-    for (const [day, arr] of groups) {
-      frag.push(h("h3", { class: "day" }, day));
+    const num = (v) => h("span", { class: "num" }, String(v));
+    for (const { d, arr } of groups.values()) {
+      // 日付の見出し: 2024年8月3日 土曜日 と、その日の枚数
+      frag.push(h("h3", { class: "day" },
+        h("span", { class: "day-date" }, num(d.getFullYear()), "年", num(d.getMonth() + 1), "月", num(d.getDate()), "日",
+          h("span", { class: "day-wk" }, "日月火水木金土"[d.getDay()] + "曜日")),
+        h("span", { class: "day-n" }, num(arr.length), "枚")));
       frag.push(h("div", { class: "grid" }, arr.map((it) => this.tile(it))));
     }
     if (!items.length && perm !== "none") {
@@ -92,7 +97,7 @@ export class Library {
         h("button", { class: "banner-btn", onClick: () => bridge.requestPermission() }, "選び直す"),
         h("button", { class: "banner-btn sub", onClick: () => bridge.openAppSettings() }, "設定を開く")));
     } else if (!bridge.inApp() && perm === "none") {
-      b.push(h("div", { class: "banner" }, h("span", {}, "スマホのアプリで開くと、写真の一覧が出ます。ここでは「ファイルから開く」で試せます。")));
+      b.push(h("div", { class: "banner" }, h("span", {}, "スマホのアプリで開くと、写真の一覧が出ます。ここでは「読み込み」で試せます。")));
     }
     this.banner.replaceChildren(...b);
   }
