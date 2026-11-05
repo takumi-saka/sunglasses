@@ -90,7 +90,7 @@ public class MainActivity extends Activity {
     private static final String HOST = BuildConfig.HOST;
     private static final String START_URL = BuildConfig.START_URL;
     private static final String LOCAL = BuildConfig.LOCAL_PREFIX;
-    private static final int BRIDGE_VERSION = 2; // 2: 撮る機能（2026-11-05）
+    private static final int BRIDGE_VERSION = 3; // 2: 撮る機能、3: 核を 2 つ混ぜる・手動のシャッター速度など（2026-11-05）
     private static final String ACTION_CAMERA = "jp.takumi.sunglasses.CAMERA";
     private static final int REQ_PICK = 1;
     private static final int REQ_CHOOSER = 2;
@@ -928,11 +928,42 @@ public class MainActivity extends Activity {
         public void cameraSetLook(String base64Half, int n, String loHi) {
             try {
                 JSONArray a = new JSONArray(loHi);
-                renderer.setLut(base64Half, n, new float[]{(float) a.getDouble(0), (float) a.getDouble(1), (float) a.getDouble(2)},
+                renderer.setLut(0, base64Half, n, new float[]{(float) a.getDouble(0), (float) a.getDouble(1), (float) a.getDouble(2)},
                         new float[]{(float) a.getDouble(3), (float) a.getDouble(4), (float) a.getDouble(5)});
+                renderer.setWeights(0f, 1f, 0f);
             } catch (Exception e) {
                 Log.w(TAG, "look", e);
             }
+        }
+
+        // 版 3: 核の色の対応表を 2 つまで（slot 0・1）
+        @JavascriptInterface
+        public void cameraSetLookSlot(int slot, String base64Half, int n, String loHi) {
+            try {
+                JSONArray a = new JSONArray(loHi);
+                renderer.setLut(slot, base64Half, n, new float[]{(float) a.getDouble(0), (float) a.getDouble(1), (float) a.getDouble(2)},
+                        new float[]{(float) a.getDouble(3), (float) a.getDouble(4), (float) a.getDouble(5)});
+            } catch (Exception e) {
+                Log.w(TAG, "look slot", e);
+            }
+        }
+
+        // 版 3: 重み（カメラの素の画・対応表 0・対応表 1。Sun Level）
+        @JavascriptInterface
+        public void cameraSetWeights(float n, float a, float b) {
+            renderer.setWeights(n, a, b);
+        }
+
+        // 版 3: 対応表ごとの明るさの倍率
+        @JavascriptInterface
+        public void cameraSetGains(float a, float b) {
+            renderer.setGains(a, b);
+        }
+
+        // 版 3: 手動のシャッター速度・ISO・WB・フォーカス・AF（JSON。書かない項目は自動）
+        @JavascriptInterface
+        public void cameraSetManual(String json) {
+            camera.setManual(json);
         }
 
         // m: sRGB の光の量 → AP1 の行列（9 個）、curve: 撮る画面の画の値 → 光の量の曲線
@@ -948,7 +979,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void cameraSetGain(float g) {
-            renderer.setGain(g);
+            renderer.setGains(g, g);
         }
 
         @JavascriptInterface

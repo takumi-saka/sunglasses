@@ -13,7 +13,7 @@ const zone = () => ({ hue: 0, sat: 0, lum: 0 });
 // つまみの初期値（0 が核のまま）
 export function defaultParams() {
   return {
-    core: "aftersun", strength: 100,
+    core: "aftersun", sunLevel: 100,
     exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
     curve: { rgb: null, r: null, g: null, b: null },
     param: { shadows: 0, darks: 0, lights: 0, highlights: 0 },
@@ -136,6 +136,30 @@ export class Engine {
 
   coreById(id) {
     return this.cores.find((c) => c.id === id) || this.cores[0];
+  }
+
+  // Sun Level（0〜100）から、混ぜる核と重みを決める。
+  // Aftersun は 0 が素の画・50 が Aftersun 弱め・100 が Aftersun（あいだはなめらかに混ぜる）。自分の好みは 0 が素の画・100 が自分の好み
+  lookFor(p) {
+    const L = C.clamp((p.sunLevel ?? p.strength ?? 100) / 100, 0, 1);
+    if (p.core === "mine") return { A: this.coreById("mine"), wA: L, B: null, wB: 0, wN: 1 - L };
+    const A = this.coreById("weak"), B = this.coreById("aftersun");
+    return L <= 0.5 ? { A, wA: 2 * L, B, wB: 0, wN: 1 - 2 * L } : { A, wA: 2 - 2 * L, B, wB: 2 * L - 1, wN: 0 };
+  }
+
+  // 核ごとの値（にじみ・白み・やわらかさ・粒）を重みで混ぜる。素の画は 0（フィルムらしさも素に戻る）
+  _mixedCore(lk) {
+    const sum = (k) => lk.wA * lk.A[k] + (lk.B ? lk.wB * lk.B[k] : 0);
+    const w = lk.wA + lk.wB || 1, avg = (k) => sum(k) / w;
+    return { soften: sum("soften"), grain: sum("grain"), grainSize: avg("grainSize"), halation: sum("halation"), bloom: sum("bloom"), bloomWarm: avg("bloomWarm") };
+  }
+
+  _lookUniforms(lk, gain) {
+    const B = lk.B || lk.A;
+    return {
+      uLutA: { tex: lk.A.tex }, uLoA: lk.A.lo, uHiA: lk.A.hi, uNA: lk.A.size, uGainA: lk.wA > 0 ? gain(lk.A) : 1, uWA: lk.wA,
+      uLutB: { tex: B.tex }, uLoB: B.lo, uHiB: B.hi, uNB: B.size, uGainB: lk.B && lk.wB > 0 ? gain(lk.B) : 1, uWB: lk.wB, uWN: lk.wN,
+    };
   }
 
   _curveTex(rows) {
@@ -347,16 +371,18 @@ export class Engine {
   // 画の一部（全体の大きさ VW×VH のうち、左上 x0,y0 から bw×bh）を描く。
   // 途中の画は使い終わったらすぐ返して使い回す（元の大きさで書き出すとき、同時に持つのを 3〜4 枚に抑える）
   _renderRegion(VW, VH, x0, y0, bw, bh, { compare = false } = {}) {
-    const P = this.params, core = this.coreById(P.core), im = this.image;
+    const P = this.params, im = this.image;
+    const lk = compare ? { A: this.coreById("aftersun"), wA: 0, B: null, wB: 0, wN: 1 } : this.lookFor(P);
+    const core = this._mixedCore(lk);
     const rt = () => this._rt(bw, bh);
     const toCrop = [bw / VW, 0, x0 / VW, 0, bh / VH, y0 / VH, 0, 0, 1];
-    const gain = (0.18 / im.key) * Math.pow(2, this.autoEv(core.id) + P.exposure);
+    const gain = (c) => (0.18 / im.key) * Math.pow(2, this.autoEv(c.id) + P.exposure);
     const gainN = (0.18 / im.key) * Math.pow(2, this.autoEv("neutral") + P.exposure);
     let cur = rt();
     this._pass("develop", cur, {
-      uSrc: this.src.tex, uXf: mul33(this._cropToSrc(), toCrop), uLut: { tex: core.tex, is3d: true }, uLutLo: core.lo, uLutHi: core.hi,
-      uLutN: core.size, uAp0ToAp1: this.ap0ToAp1, uAp0ToSrgb: this.ap0ToSrgb, uNeutralCurve: this.neutralCurveTex,
-      uGain: gain, uGainN: gainN, uStrength: compare ? 0 : P.strength / 100, uKnobs: compare ? 0 : 1, ...this._knobUniforms(),
+      uSrc: this.src.tex, uXf: mul33(this._cropToSrc(), toCrop), ...this._lookUniforms(lk, gain),
+      uAp0ToAp1: this.ap0ToAp1, uAp0ToSrgb: this.ap0ToSrgb, uNeutralCurve: this.neutralCurveTex,
+      uGainN: gainN, uKnobs: compare ? 0 : 1, ...this._knobUniforms(),
     });
     const swap = (o) => {
       this._give(cur);
@@ -565,8 +591,10 @@ export class Engine {
   }
 
   // ---------- 一覧の小さな画（RAW から作った小さな光の量の画に、核だけをかける）----------
-  renderThumb(t, coreId, canvas) {
-    const gl = this.gl, core = this.coreById(coreId), w = t.tw, h = t.th, used = [];
+  // look は { core, sunLevel }（核の名前だけを渡すと Sun Level 100）
+  renderThumb(t, look, canvas) {
+    const lk = this.lookFor(typeof look === "string" ? { core: look === "weak" ? "aftersun" : look, sunLevel: look === "weak" ? 50 : 100 } : look);
+    const gl = this.gl, w = t.tw, h = t.th, used = [];
     const up = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, up);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
@@ -575,13 +603,14 @@ export class Engine {
       [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
     const src = { tex: up };
     const { small, key } = t;
-    const ev = C.searchEv((e) => C.medianCore(small, key, e, core.cpu, this.ap0ToAp1), this.targetL + core.lift);
+    const gain = (c) => (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianCore(small, key, e, c.cpu, this.ap0ToAp1), this.targetL + c.lift));
+    const gainN = lk.wN > 0 ? (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianNeutral(small, key, e, this.ap0ToSrgb, this.neutralCurve), this.targetL)) : 1;
     const lab = this._rt(w, h), rgb = this._rt(w, h), out = this._rt(w, h, true);
     used.push(lab, rgb, out);
     this._pass("develop", lab, {
-      uSrc: src, uXf: I3, uLut: { tex: core.tex, is3d: true }, uLutLo: core.lo, uLutHi: core.hi, uLutN: core.size,
+      uSrc: src, uXf: I3, ...this._lookUniforms(lk, gain),
       uAp0ToAp1: this.ap0ToAp1, uAp0ToSrgb: this.ap0ToSrgb, uNeutralCurve: this.neutralCurveTex,
-      uGain: (0.18 / key) * Math.pow(2, ev), uGainN: 1, uStrength: 1, uKnobs: 0, ...this._knobUniforms(),
+      uGainN: gainN, uKnobs: 0, ...this._knobUniforms(),
     });
     this._pass("finish", rgb, { uLab: lab, uNoise: lab, uGrainOn: 0, uGrainAmp: 0, uVignette: 0, uToCrop: I3 });
     this._pass("final", out, { uRgb: rgb, uGlow: rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: 0, uClip: 0 });

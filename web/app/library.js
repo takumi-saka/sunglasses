@@ -142,8 +142,9 @@ export class Library {
   async thumb(it) {
     const key = bridge.keyOf(it);
     const edit = this.edited.has(key) ? await getEdit(key) : null;
-    const core = (edit && edit.params && edit.params.core) || AUTO_CORE;
-    const ck = `${key}:${core}`;
+    const ep = (edit && edit.params) || {};
+    const look = ep.core === "weak" ? { core: "aftersun", sunLevel: 50 } : { core: ep.core || AUTO_CORE, sunLevel: ep.sunLevel ?? ep.strength ?? 100 };
+    const ck = `${key}:${look.core}:${Math.round(look.sunLevel)}`;
     if (this.urls.has(ck)) return this.urls.get(ck);
     const req = new Request(new URL(`thumb/${encodeURIComponent(ck)}.jpg`, document.baseURI));
     let cache = null;
@@ -162,7 +163,7 @@ export class Library {
     if (!res.ok) throw new Error("raw");
     const t = await this.engine.decodeThumb(await res.arrayBuffer(), 384);
     const cv = document.createElement("canvas");
-    this.engine.renderThumb(t, core, cv);
+    this.engine.renderThumb(t, look, cv);
     const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.86));
     if (cache) cache.put(req, new Response(blob, { headers: { "Content-Type": "image/jpeg" } })).catch(() => {});
     const u = URL.createObjectURL(blob);

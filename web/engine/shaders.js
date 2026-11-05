@@ -76,16 +76,23 @@ void main() {
 export const FS_DEVELOP = fs(`
 uniform sampler2D uSrc;
 uniform mat3 uXf;
-uniform sampler3D uLut;
-uniform vec3 uLutLo;
-uniform vec3 uLutHi;
-uniform float uLutN;
+uniform sampler3D uLutA;
+uniform sampler3D uLutB;
+uniform vec3 uLoA;
+uniform vec3 uHiA;
+uniform float uNA;
+uniform vec3 uLoB;
+uniform vec3 uHiB;
+uniform float uNB;
 uniform mat3 uAp0ToAp1;
 uniform mat3 uAp0ToSrgb;
 uniform sampler2D uNeutralCurve;
-uniform float uGain;
+uniform float uGainA;
+uniform float uGainB;
 uniform float uGainN;
-uniform float uStrength;
+uniform float uWA;
+uniform float uWB;
+uniform float uWN;
 uniform int uKnobs;
 uniform float uContrast;
 uniform float uHighlights;
@@ -111,10 +118,15 @@ uniform float uGradeLum[4];
 const float CENTERS[9] = float[9](25.0, 55.0, 90.0, 135.0, 190.0, 250.0, 295.0, 340.0, 385.0);
 
 float cct(float v) { return v <= 0.0078125 ? 10.5402377416545 * v + 0.0729055341958355 : (log2(v) + 9.72) / 17.52; }
-vec3 lookCore(vec3 ap0) {
-  vec3 v = max(uAp0ToAp1 * ap0 * uGain, 0.0);
-  vec3 t = clamp((vec3(cct(v.r), cct(v.g), cct(v.b)) - uLutLo) / (uLutHi - uLutLo), 0.0, 1.0);
-  return clamp(texture(uLut, (t * (uLutN - 1.0) + 0.5) / uLutN).rgb, 0.0, 1.0);
+vec3 lookA(vec3 ap0) {
+  vec3 v = max(uAp0ToAp1 * ap0 * uGainA, 0.0);
+  vec3 t = clamp((vec3(cct(v.r), cct(v.g), cct(v.b)) - uLoA) / (uHiA - uLoA), 0.0, 1.0);
+  return clamp(texture(uLutA, (t * (uNA - 1.0) + 0.5) / uNA).rgb, 0.0, 1.0);
+}
+vec3 lookB(vec3 ap0) {
+  vec3 v = max(uAp0ToAp1 * ap0 * uGainB, 0.0);
+  vec3 t = clamp((vec3(cct(v.r), cct(v.g), cct(v.b)) - uLoB) / (uHiB - uLoB), 0.0, 1.0);
+  return clamp(texture(uLutB, (t * (uNB - 1.0) + 0.5) / uNB).rgb, 0.0, 1.0);
 }
 float shoulder(float v) { return v <= 0.8 ? v : 0.8 + 0.2 * (1.0 - exp(-(v - 0.8) / 0.2)); }
 vec3 neutral(vec3 ap0) {
@@ -182,8 +194,11 @@ vec3 knobs(vec3 lab) {
 }
 void main() {
   vec3 ap0 = texture(uSrc, (uXf * vec3(vUv, 1.0)).xy).rgb;
-  vec3 rgb = lookCore(ap0);
-  if (uStrength < 0.999) rgb = mix(neutral(ap0), rgb, uStrength);
+  // 2 つの核と素の画を、Sun Level の重みで混ぜる
+  vec3 rgb = vec3(0.0);
+  if (uWA > 0.0) rgb += uWA * lookA(ap0);
+  if (uWB > 0.0) rgb += uWB * lookB(ap0);
+  if (uWN > 0.0) rgb += uWN * neutral(ap0);
   vec3 lab = rgb2lab(rgb);
   if (uKnobs == 1) lab = knobs(lab);
   o = vec4(lab, 1.0);

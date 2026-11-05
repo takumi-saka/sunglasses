@@ -18,7 +18,7 @@ export function h(tag, attrs = {}, ...kids) {
 // ---------- つまみ ----------
 // 指を動かした分だけ値が変わる（置いた所へ飛ばない）。指を下へずらすと 4 分の 1 の速さ（細かく合わせる）。
 // 初期値の近くで手応えとともに止まる。2 回たたくと初期値に戻る。
-export function slider({ label, min, max, step = 1, value, def = 0, fmt, track = "", onInput, onCommit }) {
+export function slider({ label, min, max, step = 1, value, def = 0, fmt, track = "", onInput, onCommit, onReset = null, snaps = [], extra = null }) {
   let v = value, dragging = false, startX = 0, startY = 0, startV = 0, fine = false, moved = false, lastTap = 0, inSnap = false;
   const valEl = h("span", { class: "sl-val" });
   const dot = h("span", { class: "sl-dot" });
@@ -27,7 +27,8 @@ export function slider({ label, min, max, step = 1, value, def = 0, fmt, track =
   const ticks = h("div", { class: "sl-ticks" });
   const trackEl = h("div", { class: `sl-track ${track ? "sl-track-" + track : ""}` }, ticks, fill, h("div", { class: "sl-zero" }), thumb);
   const hint = h("span", { class: "sl-hint" }, "細かく");
-  const el = h("div", { class: "sl" }, h("div", { class: "sl-head" }, dot, h("span", { class: "sl-label" }, label), hint, valEl), trackEl);
+  const el = h("div", { class: "sl" }, h("div", { class: "sl-head" }, dot, h("span", { class: "sl-label" }, label), extra, hint, valEl), trackEl);
+  const stops = [def, ...snaps];
   const span = max - min, zeroAt = (def - min) / span;
   trackEl.style.setProperty("--zero", zeroAt * 100 + "%");
 
@@ -47,10 +48,16 @@ export function slider({ label, min, max, step = 1, value, def = 0, fmt, track =
     if (emit && onInput) onInput(v);
   }
   el.addEventListener("pointerdown", (e) => {
+    // 見出しの横に置いたボタン（撮る画面の「自動」など）は、つまみの操作にしない（指をつかむと、ボタンが押せなくなる）
+    if (extra && extra.contains(e.target)) return;
     const now = performance.now();
     if (now - lastTap < 320) {
-      // 2 回たたいた: 初期値に戻す
+      // 2 回たたいた: 初期値に戻す（onReset があれば、そちらに任せる）
       lastTap = 0;
+      if (onReset) {
+        onReset();
+        return;
+      }
       if (v !== def) {
         setValue(def, true);
         haptic("detent");
@@ -65,7 +72,7 @@ export function slider({ label, min, max, step = 1, value, def = 0, fmt, track =
     startX = e.clientX;
     startY = e.clientY;
     startV = v;
-    inSnap = Math.abs(v - def) < 1e-9;
+    inSnap = stops.some((s) => Math.abs(v - s) < 1e-9);
     el.setPointerCapture(e.pointerId);
     el.classList.add("is-active");
   });
@@ -85,10 +92,11 @@ export function slider({ label, min, max, step = 1, value, def = 0, fmt, track =
     if (!moved) return;
     let nv = startV + (dx / w) * span * (fine ? 0.25 : 1);
     const snap = span * 0.012;
-    const near = Math.abs(nv - def) < snap;
+    const to = stops.find((s) => Math.abs(nv - s) < snap);
+    const near = to !== undefined;
     if (near && !inSnap) haptic("detent");
     inSnap = near;
-    if (near) nv = def;
+    if (near) nv = to;
     setValue(nv, true);
   });
   const end = () => {

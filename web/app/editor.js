@@ -23,6 +23,12 @@ function mergeParams(saved) {
     }
   };
   walk(p, saved);
+  // 前の形（核の強さ・Aftersun 弱めの核）で直した写真は、Sun Level に読み替える
+  if (saved && saved.sunLevel === undefined && saved.strength !== undefined) p.sunLevel = saved.strength;
+  if (saved && saved.core === "weak") {
+    p.core = "aftersun";
+    if (saved.sunLevel === undefined) p.sunLevel = 50;
+  }
   return p;
 }
 
@@ -365,7 +371,7 @@ export class Editor {
   groupChanged(g) {
     const p = this.params;
     if (g.knobs) return g.knobs.some((k) => changed(p, k)) || (g.curve && (Object.values(p.curve).some((c) => c && c.length) || Object.values(p.param).some((v) => v))) || (g.bw && p.bw);
-    if (g.id === "core") return p.core !== AUTO_CORE || p.strength !== 100;
+    if (g.id === "core") return p.core !== AUTO_CORE || (p.sunLevel ?? 100) !== 100;
     if (g.id === "mix") return ["hue", "sat", "lum"].some((k) => p.hsl[k].some((v) => v));
     if (g.id === "grade") return p.grading.balance !== 0 || GRADE_ZONES.some(([z]) => p.grading[z].sat || p.grading[z].lum);
     if (g.id === "crop") return p.crop.w < 0.999 || p.crop.h < 0.999 || p.crop.angle !== 0;
@@ -392,11 +398,11 @@ export class Editor {
     if (on) on.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
   }
 
-  knob(key, { path = key, label, value, def, min, max, fmt, track } = {}) {
+  knob(key, { path = key, label, value, def, min, max, fmt, track, snaps } = {}) {
     const k = KNOBS[key] || {};
     return slider({
       label: label || k.label, min: min ?? k.min, max: max ?? k.max, step: k.step || 1, def: def ?? k.def ?? 0, fmt: fmt || k.fmt, track: track || k.track,
-      value: value ?? this.params[key], onInput: (v) => this.setParam(path, v), onCommit: () => this.commit(),
+      value: value ?? this.params[key], snaps, onInput: (v) => this.setParam(path, v), onCommit: () => this.commit(),
     }).el;
   }
 
@@ -421,7 +427,7 @@ export class Editor {
   }
 
   corePanel() {
-    const boxes = this.engine.cores.map((c) => {
+    const boxes = this.engine.cores.filter((c) => c.id !== "weak").map((c) => {
       const cv = h("canvas", { class: "core-cv" });
       const [c1, c2] = CORE_BANDS[c.id] || ["#555", "#999"];
       const box = h("button", {
@@ -440,8 +446,10 @@ export class Editor {
     });
     const row = h("div", { class: "cores" }, boxes);
     requestAnimationFrame(() => this.drawCoreThumbs(row));
-    const note = h("p", { class: "note" }, "写真に合わせて自動で選びます。いまは昼の写真なので Aftersun。夜の核ができたら、夜の写真は夜の核になります。");
-    return [row, this.knob("strength"), note];
+    const note = h("p", { class: "note" }, this.params.core === "mine"
+      ? "Sun Level は、0 で素の画、100 で自分の好み。"
+      : "Sun Level は、0 で素の画、50 で Aftersun 弱め、100 で Aftersun。あいだはなめらかに混ざります。");
+    return [row, this.knob("sunLevel", { snaps: this.params.core === "mine" ? [] : [50] }), note];
   }
 
   // 核の箱の中に、いまの写真をその核で描いた小さな画を出す
@@ -452,7 +460,7 @@ export class Editor {
     }
     const keep = this.engine.params;
     for (const box of row.querySelectorAll(".core-box")) {
-      this.engine.params = { ...defaultParams(), core: box.dataset.core, crop: keep.crop };
+      this.engine.params = { ...defaultParams(), core: box.dataset.core, sunLevel: 100, crop: keep.crop };
       const r = this.engine.renderPixels(220);
       const cv = box.querySelector("canvas");
       cv.width = r.width;
@@ -574,7 +582,7 @@ export class Editor {
       const blob = await this.engine.exportJpeg({ maxSide, quality: 0.95 });
       const name = (item.name || "photo").replace(/\.[^.]+$/, "") + "_sunglasses.jpg";
       const p = this.params, core = this.engine.coreById(p.core);
-      const note = `Sunglasses: ${core.name} ${p.strength}%, exposure ${p.exposure >= 0 ? "+" : ""}${p.exposure.toFixed(2)}`;
+      const note = `Sunglasses: ${core.name} Sun Level ${Math.round(p.sunLevel ?? 100)}, exposure ${p.exposure >= 0 ? "+" : ""}${p.exposure.toFixed(2)}`;
       const res = await bridge.saveJpeg(blob, { name, folder: "DCIM/Camera", item, copyLocation, note });
       if (!res.ok) throw new Error(res.error || "保存できませんでした");
       bridge.haptic("confirm");

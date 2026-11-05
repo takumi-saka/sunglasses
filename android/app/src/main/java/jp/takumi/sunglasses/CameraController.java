@@ -18,13 +18,16 @@ import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.DngCreator;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.MeteringRectangle;
+import android.hardware.camera2.params.ColorSpaceTransform;
 import android.hardware.camera2.params.OutputConfiguration;
+import android.hardware.camera2.params.RggbChannelVector;
 import android.hardware.camera2.params.SessionConfiguration;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ExifInterface;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaActionSound;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.Handler;
@@ -82,6 +85,13 @@ final class CameraController {
     private float evStep = 1f / 3f;
     private int evMin, evMax, evIndex;
     private boolean locked;
+    // 手動の設定（null は自動）。版 3
+    private Integer manIso;
+    private Long manExp;
+    private Float manFocus;
+    private String afMode = "continuous", wbMode = "auto";
+    private float[] wbGains;
+    private boolean manualSensor, manualPost;
     private final Map<Long, Image> images = new HashMap<>();
     private final Map<Long, TotalCaptureResult> results = new HashMap<>();
     private volatile int deviceRotation;
@@ -140,6 +150,28 @@ final class CameraController {
                 o.put("presetCurve", has(tm, CameraMetadata.TONEMAP_MODE_PRESET_CURVE));
                 int[] sm = c.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_LENS_SHADING_MAP_MODES);
                 o.put("shadingMap", has(sm, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON));
+                o.put("manualSensor", has(caps, CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR));
+                o.put("manualPost", has(caps, CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING));
+                Range<Integer> iso = c.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+                if (iso != null) o.put("iso", new JSONArray(new int[]{iso.getLower(), iso.getUpper()}));
+                Range<Long> exp = c.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
+                if (exp != null) o.put("exposure", new JSONArray(new double[]{exp.getLower() / 1e9, exp.getUpper() / 1e9}));
+                Float minFocus = c.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+                o.put("minFocus", minFocus == null ? 0 : minFocus);
+                int[] awb = c.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES);
+                o.put("awbModes", new JSONArray(awb == null ? new int[0] : awb));
+                int[] afm = c.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+                o.put("afModes", new JSONArray(afm == null ? new int[0] : afm));
+                o.put("colorTransform1", matrix(c.get(CameraCharacteristics.SENSOR_COLOR_TRANSFORM1)));
+                o.put("colorTransform2", matrix(c.get(CameraCharacteristics.SENSOR_COLOR_TRANSFORM2)));
+                o.put("forwardMatrix1", matrix(c.get(CameraCharacteristics.SENSOR_FORWARD_MATRIX1)));
+                o.put("forwardMatrix2", matrix(c.get(CameraCharacteristics.SENSOR_FORWARD_MATRIX2)));
+                o.put("calibration1", matrix(c.get(CameraCharacteristics.SENSOR_CALIBRATION_TRANSFORM1)));
+                o.put("calibration2", matrix(c.get(CameraCharacteristics.SENSOR_CALIBRATION_TRANSFORM2)));
+                Integer il1 = c.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT1);
+                Byte il2 = c.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT2);
+                o.put("illuminant1", il1 == null ? 0 : il1);
+                o.put("illuminant2", il2 == null ? 0 : il2);
                 cams.put(o);
             }
             out.put("cameras", cams);
@@ -151,6 +183,21 @@ final class CameraController {
             }
         }
         return out.toString();
+    }
+
+    private static JSONArray matrix(ColorSpaceTransform t) {
+        JSONArray a = new JSONArray();
+        if (t == null) return a;
+        for (int r = 0; r < 3; r++) {
+            for (int c = 0; c < 3; c++) {
+                try {
+                    a.put(t.getElement(c, r).doubleValue());
+                } catch (Exception ignored) {
+                    // 読めない値は飛ばす
+                }
+            }
+        }
+        return a;
     }
 
     private static boolean has(int[] a, int v) {
@@ -184,6 +231,9 @@ final class CameraController {
                 renderer.setPreset(presetSrgb);
                 int[] af = chars.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
                 afContinuous = has(af, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+                int[] caps = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
+                manualSensor = has(caps, CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR);
+                manualPost = has(caps, CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING);
                 Range<Integer> er = chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
                 Rational es = chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
                 evMin = er == null ? 0 : er.getLower();
@@ -293,6 +343,7 @@ final class CameraController {
                 preview.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB);
             }
             preview.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, evIndex);
+            applyManual(preview);
             repeat();
         } catch (Exception e) {
             Log.w(TAG, "preview", e);
@@ -319,6 +370,11 @@ final class CameraController {
                     if (iso != null) o.put("iso", iso);
                     if (ae != null) o.put("ae", ae);
                     if (afs != null) o.put("af", afs);
+                    Float fd = res.get(CaptureResult.LENS_FOCUS_DISTANCE);
+                    if (fd != null) o.put("focus", fd);
+                    RggbChannelVector wg = res.get(CaptureResult.COLOR_CORRECTION_GAINS);
+                    if (wg != null) o.put("wbGains", new JSONArray(new float[]{wg.getRed(), wg.getGreenEven(), wg.getGreenOdd(), wg.getBlue()}));
+                    o.put("manual", manIso != null && manExp != null);
                     o.put("locked", locked);
                     events.emit("sunglasses:camera", o.toString());
                 } catch (Exception ignored) {
@@ -468,6 +524,68 @@ final class CameraController {
         });
     }
 
+    // ---- 手動のシャッター速度・ISO・WB・フォーカス・AF（版 3）----
+    // json の例: {"iso":200,"exposure":0.004,"focus":2.5,"af":"single","wb":"daylight","wbGains":[2.0,1,1,1.6]}
+    // iso と exposure は 2 つそろったときだけ手動にする（片方だけ手で決めるときは、ページがもう片方を計算して渡す）
+    void setManual(String json) {
+        if (bg == null) return;
+        bg.post(() -> {
+            try {
+                JSONObject o = new JSONObject(json);
+                manIso = o.isNull("iso") ? null : o.optInt("iso");
+                manExp = o.isNull("exposure") ? null : Math.round(o.optDouble("exposure") * 1e9);
+                manFocus = o.isNull("focus") ? null : (float) o.optDouble("focus");
+                afMode = o.optString("af", "continuous");
+                wbMode = o.optString("wb", "auto");
+                JSONArray g = o.optJSONArray("wbGains");
+                wbGains = g == null || g.length() < 4 ? null
+                        : new float[]{(float) g.getDouble(0), (float) g.getDouble(1), (float) g.getDouble(2), (float) g.getDouble(3)};
+                if (preview == null) return;
+                applyManual(preview);
+                repeat();
+            } catch (Exception e) {
+                Log.w(TAG, "manual", e);
+            }
+        });
+    }
+
+    private void applyManual(CaptureRequest.Builder b) {
+        if (manualSensor && manIso != null && manExp != null) {
+            b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
+            b.set(CaptureRequest.SENSOR_SENSITIVITY, manIso);
+            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, manExp);
+            b.set(CaptureRequest.SENSOR_FRAME_DURATION, Math.max(manExp, 33_333_333L));
+        } else {
+            b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
+            b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, evIndex);
+        }
+        if (manFocus != null && manualSensor) {
+            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF);
+            b.set(CaptureRequest.LENS_FOCUS_DISTANCE, manFocus);
+        } else if ("single".equals(afMode)) {
+            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_AUTO);
+        } else if (afContinuous) {
+            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+        }
+        if (wbGains != null && manualPost) {
+            b.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_OFF);
+            b.set(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
+            b.set(CaptureRequest.COLOR_CORRECTION_GAINS, new RggbChannelVector(wbGains[0], wbGains[1], wbGains[2], wbGains[3]));
+        } else {
+            int m;
+            switch (wbMode) {
+                case "daylight": m = CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT; break;
+                case "cloudy": m = CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT; break;
+                case "shade": m = CameraMetadata.CONTROL_AWB_MODE_SHADE; break;
+                case "incandescent": m = CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT; break;
+                case "fluorescent": m = CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT; break;
+                case "twilight": m = CameraMetadata.CONTROL_AWB_MODE_TWILIGHT; break;
+                default: m = CameraMetadata.CONTROL_AWB_MODE_AUTO;
+            }
+            b.set(CaptureRequest.CONTROL_AWB_MODE, m);
+        }
+    }
+
     // ---- 撮る ----
     void capture(boolean withSound) {
         sound = withSound;
@@ -486,8 +604,6 @@ final class CameraController {
                 b.addTarget(rawReader.getSurface());
                 b.addTarget(previewSurface);
                 b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
-                b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON);
-                b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, evIndex);
                 b.set(CaptureRequest.CONTROL_AE_LOCK, locked);
                 if (preview.get(CaptureRequest.CONTROL_AE_REGIONS) != null) b.set(CaptureRequest.CONTROL_AE_REGIONS, preview.get(CaptureRequest.CONTROL_AE_REGIONS));
                 Integer afMode = preview.get(CaptureRequest.CONTROL_AF_MODE);
@@ -497,6 +613,8 @@ final class CameraController {
                     b.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB);
                 }
                 if (shadingMap) b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON);
+                applyManual(b);
+                if (manFocus == null && afMode.equals("continuous") && afMode != null && afContinuous) b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
                 session.capture(b.build(), new CameraCaptureSession.CaptureCallback() {
                     @Override
                     public void onCaptureStarted(CameraCaptureSession s, CaptureRequest r, long ts, long frame) {
@@ -557,12 +675,22 @@ final class CameraController {
             ContentValues done = new ContentValues();
             done.put(MediaStore.MediaColumns.IS_PENDING, 0);
             cr.update(uri, done, null, null);
+            long modified = taken / 1000, size = -1;
+            try (Cursor c = cr.query(uri, new String[]{MediaStore.MediaColumns.DATE_MODIFIED, MediaStore.MediaColumns.SIZE}, null, null, null)) {
+                if (c != null && c.moveToFirst()) {
+                    modified = c.getLong(0);
+                    size = c.getLong(1);
+                }
+            } catch (Exception ignored) {
+                // 読めなければ撮った時刻
+            }
             JSONObject item = new JSONObject();
             item.put("id", Long.parseLong(uri.getLastPathSegment()));
             item.put("volume", MediaStore.VOLUME_EXTERNAL_PRIMARY);
             item.put("name", name);
             item.put("dateTaken", taken);
-            item.put("dateModified", taken / 1000);
+            item.put("dateModified", modified);
+            item.put("size", size);
             item.put("width", img.getWidth());
             item.put("height", img.getHeight());
             item.put("folder", "DCIM/Sunglasses/");

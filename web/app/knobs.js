@@ -26,7 +26,7 @@ export const KNOBS = {
   sharpen: { label: "シャープ", min: 0, max: 150 },
   noise: { label: "ノイズ軽減", min: 0, max: 100 },
   colorNoise: { label: "カラーノイズ軽減", min: 0, max: 100 },
-  strength: { label: "核の強さ", min: 0, max: 100, def: 100, fmt: (v) => Math.round(v) + "%" },
+  sunLevel: { label: "Sun Level", min: 0, max: 100, def: 100, fmt: (v) => String(Math.round(v)) },
 };
 for (const k of Object.values(KNOBS)) {
   k.min ??= -100;
