@@ -71,15 +71,17 @@ EMSCRIPTEN_KEEPALIVE int sg_thumb() {
   if (thumb->type != LIBRAW_IMAGE_JPEG) return -3;
   return 0;
 }
+// 写真の向き（0 そのまま、3 は 180 度、5 は左へ 90 度、6 は右へ 90 度）。見本の画を正しい向きで出すのに使う
+EMSCRIPTEN_KEEPALIVE int sg_flip() { return R ? R->imgdata.sizes.flip : 0; }
 EMSCRIPTEN_KEEPALIVE const uint8_t* sg_thumb_data() { return thumb ? thumb->data : nullptr; }
 EMSCRIPTEN_KEEPALIVE int sg_thumb_size() { return thumb ? (int)thumb->data_size : 0; }
 
-// 現像する（光の量の画を作る）
-EMSCRIPTEN_KEEPALIVE int sg_develop() {
+// 現像する（光の量の画を作る）。half=1 なら半分の大きさで読む（一覧の小さな画を速く作るため）
+EMSCRIPTEN_KEEPALIVE int sg_develop(int half) {
   int r = R->unpack();
   if (r != LIBRAW_SUCCESS) return r;
   auto& P = R->imgdata.params;
-  if (R->imgdata.sizes.raw_width > 6000) P.half_size = 1;
+  if (half || R->imgdata.sizes.raw_width > 6000) P.half_size = 1;
   float* cm = R->imgdata.color.cam_mul;
   float mn = std::min(cm[0], std::min(cm[1], cm[2])), mx = std::max(cm[0], std::max(cm[1], cm[2]));
   bool camWb = mn > 0 && mx / mn > 1.3f;

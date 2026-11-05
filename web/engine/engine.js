@@ -79,19 +79,34 @@ export class Engine {
     for (const [k, src] of Object.entries(fs)) this.progs[k] = this._program(S.VS, src, k);
     await this._loadLooks();
     this.worker = new Worker(new URL("./raw-worker.js", import.meta.url), { type: "module" });
+    this.thumbWorker = null; // 一覧の小さな画を作る係（使うときに作る）
     this.jobs = new Map();
     this.jobId = 0;
-    this.worker.onmessage = (e) => {
+    this.onWorker = (e) => {
       const j = this.jobs.get(e.data.id);
       if (!j) return;
       if (e.data.stage === "thumb") {
-        if (j.onThumb) j.onThumb(e.data.thumb);
+        if (j.onThumb) j.onThumb(e.data.thumb, e.data.flip);
         return;
       }
       this.jobs.delete(e.data.id);
       if (e.data.stage === "done") j.resolve(e.data);
       else j.reject(new Error(e.data.error));
     };
+    this.worker.onmessage = this.onWorker;
+  }
+
+  // 一覧の小さな画: RAW を半分の大きさで読み、長い辺 size に縮めた光の量の画を返す（編集と同じ流れで核をかけるため）
+  decodeThumb(buf, size = 384) {
+    if (!this.thumbWorker) {
+      this.thumbWorker = new Worker(new URL("./raw-worker.js", import.meta.url), { type: "module" });
+      this.thumbWorker.onmessage = this.onWorker;
+    }
+    const id = ++this.jobId;
+    return new Promise((resolve, reject) => {
+      this.jobs.set(id, { resolve, reject });
+      this.thumbWorker.postMessage({ id, cmd: "thumb", buf, size }, [buf]);
+    });
   }
 
   // ---------- 核（色の対応表）と、決まった曲線 ----------
@@ -549,15 +564,17 @@ export class Engine {
     return { width: VW, height: VH, pixels: px };
   }
 
-  // ---------- 一覧の小さな画（JPEG の見本に核だけをかける）----------
-  renderThumb(bitmap, coreId, canvas) {
-    const gl = this.gl, core = this.coreById(coreId), w = bitmap.width, h = bitmap.height;
-    const t = this._uploadBitmap(bitmap), used = [];
-    const src = this._rt(w, h);
-    used.push(src);
-    this._pass("jpeg2f", src, { uJpeg: t, uToLinear: this.jpegToLinearTex, uSrgbToAp0: this.srgbToAp0 });
-    gl.deleteTexture(t);
-    const { small, key } = this._smallFromBitmap(bitmap);
+  // ---------- 一覧の小さな画（RAW から作った小さな光の量の画に、核だけをかける）----------
+  renderThumb(t, coreId, canvas) {
+    const gl = this.gl, core = this.coreById(coreId), w = t.tw, h = t.th, used = [];
+    const up = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, up);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB32F, w, h, 0, gl.RGB, gl.FLOAT, t.thumb);
+    for (const [p, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
+      [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
+    const src = { tex: up };
+    const { small, key } = t;
     const ev = C.searchEv((e) => C.medianCore(small, key, e, core.cpu, this.ap0ToAp1), this.targetL + core.lift);
     const lab = this._rt(w, h), rgb = this._rt(w, h), out = this._rt(w, h, true);
     used.push(lab, rgb, out);
@@ -571,6 +588,7 @@ export class Engine {
     const px = new Uint8ClampedArray(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
     this._release(used);
+    gl.deleteTexture(up);
     canvas.width = w;
     canvas.height = h;
     canvas.getContext("2d").putImageData(new ImageData(px, w, h), 0, 0);

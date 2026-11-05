@@ -18,6 +18,6 @@ xargs -P 2 -I{} sh -c 'o="build/obj/$(echo "{}" | tr / _).o"; if [ ! -f "$o" ]; 
 em++ $FLAGS raw.cpp build/obj/*.o -o ../web/engine/raw.js \
   -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createRaw -sENVIRONMENT=web,worker,node \
   -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB -sINITIAL_MEMORY=64MB -sSTACK_SIZE=4MB \
-  -sEXPORTED_FUNCTIONS=_sg_open,_sg_thumb,_sg_thumb_data,_sg_thumb_size,_sg_develop,_sg_width,_sg_height,_sg_pixels,_sg_meta,_sg_error,_sg_close,_malloc,_free \
+  -sEXPORTED_FUNCTIONS=_sg_open,_sg_thumb,_sg_thumb_data,_sg_thumb_size,_sg_flip,_sg_develop,_sg_width,_sg_height,_sg_pixels,_sg_meta,_sg_error,_sg_close,_malloc,_free \
   -sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPU16,UTF8ToString
 ls -la ../web/engine/raw.js ../web/engine/raw.wasm
