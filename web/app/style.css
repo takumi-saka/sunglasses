@@ -162,6 +162,49 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .toast-text { flex: 1; }
 .toast-btn { color: var(--accent); font-weight: 600; padding: 4px 2px; }
 .fatal { padding: 48px var(--edge); }
+
+/* ---------- 撮る ---------- */
+/* カメラの画は APK がページの下に描く。撮る画面の間は、ページの地を透かし、枠の所だけ下の画を見せる */
+html.is-camera, html.is-camera body { background: transparent; }
+.cam { background: transparent; }
+.cam-top, .cam-info, .cam-lenses, .cam-ev, .cam-bottom { background: var(--body); }
+.cam-top { display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 6px 0 4px; }
+.cam-sets { display: flex; gap: 0; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+.cam-set { display: flex; flex-direction: column; align-items: center; padding: 4px 7px; font-size: 10px; letter-spacing: .04em; color: var(--sub); line-height: 1.35; white-space: nowrap; }
+.cam-set b { font-weight: 500; font-size: 11px; color: var(--ink); }
+.cam-view { position: relative; flex: none; width: 100%; aspect-ratio: 3 / 4; background: transparent; touch-action: none; overflow: hidden; }
+.cam-view.is-flash::after { content: ""; position: absolute; inset: 0; background: #000; opacity: .65; }
+.cam-frame { position: absolute; inset: 0; pointer-events: none; }
+.cam-frame[data-frame="1.85"]::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; aspect-ratio: 1.85 / 1; transform: translateY(-50%); box-shadow: 0 0 0 2000px rgba(0,0,0,.38); outline: 1px solid rgba(236,230,218,.55); }
+.cam-frame[data-frame="1.85"][data-land="1"]::before { left: 50%; right: auto; top: 0; height: 100%; aspect-ratio: 1 / 1.85; transform: translateX(-50%); }
+.cam-grid { position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(90deg, transparent calc(33.33% - .5px), rgba(236,230,218,.35) calc(33.33% - .5px), rgba(236,230,218,.35) calc(33.33% + .5px), transparent calc(33.33% + .5px), transparent calc(66.66% - .5px), rgba(236,230,218,.35) calc(66.66% - .5px), rgba(236,230,218,.35) calc(66.66% + .5px), transparent calc(66.66% + .5px)),
+    linear-gradient(0deg, transparent calc(33.33% - .5px), rgba(236,230,218,.35) calc(33.33% - .5px), rgba(236,230,218,.35) calc(33.33% + .5px), transparent calc(33.33% + .5px), transparent calc(66.66% - .5px), rgba(236,230,218,.35) calc(66.66% - .5px), rgba(236,230,218,.35) calc(66.66% + .5px), transparent calc(66.66% + .5px)); }
+.cam-grid[hidden] { display: none; }
+.cam-level { position: absolute; left: 50%; top: 50%; width: 44%; height: 0; border-top: 1px solid rgba(236,230,218,.6); transform: translate(-50%, -50%); pointer-events: none; transition: border-color .15s; }
+.cam-level.is-ok { border-color: var(--accent); }
+.cam-ring { position: absolute; width: 66px; height: 66px; margin: -33px 0 0 -33px; border: 1.5px solid var(--ink); border-radius: 50%; opacity: 0; pointer-events: none; }
+.cam-ring.is-on { animation: cam-ring 1.3s forwards; }
+.cam-ring.is-lock { border-color: var(--accent); animation: cam-lock .35s forwards; }
+@keyframes cam-ring { 0% { opacity: 1; transform: scale(1.25); } 20% { transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
+@keyframes cam-lock { 0% { opacity: 1; transform: scale(1.25); } 100% { opacity: 1; transform: scale(1); } }
+.cam-msg { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 24px var(--edge); background: var(--body); text-align: center; line-height: 1.8; font-size: 14px; }
+.cam-msg[hidden] { display: none; }
+.cam-msg-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+.cam-info { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 var(--edge); font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+.cam-count { margin-left: auto; color: var(--sub); font-size: 11px; }
+.cam-lenses { padding-top: 4px; padding-bottom: 0; }
+.cam-lenses:empty { display: none; }
+.cam-bottom { flex: 1; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px var(--edge) calc(14px + env(safe-area-inset-bottom)); }
+.cam-thumb { justify-self: start; width: 54px; height: 54px; border-radius: 8px; background: #151515 center / cover no-repeat; border: 1px solid var(--line); opacity: .35; }
+.cam-thumb.is-on { opacity: 1; }
+.cam-shutter { width: 74px; height: 74px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 4px var(--body), 0 0 0 6px var(--ink); transition: transform .08s; }
+.cam-shutter:active { transform: scale(.93); background: var(--accent); }
+.cam-right { justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.cam-core { display: flex; flex-direction: column; align-items: flex-end; font-size: 12px; line-height: 1.35; }
+.cam-core b { font-weight: 500; }
+#cam-raw.is-on { color: var(--accent); border-color: var(--accent); }
+.rot { transition: transform .25s; transform: rotate(var(--rot, 0deg)); }
 .menu-row { display: block; width: 100%; text-align: left; padding: 14px var(--edge); font-size: 14px; border-top: 1px solid var(--line); }
 .menu-row small { display: block; color: var(--sub); font-size: 11px; margin-top: 2px; }
 .menu-row:disabled { opacity: .35; }

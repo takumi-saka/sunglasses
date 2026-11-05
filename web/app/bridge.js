@@ -98,3 +98,16 @@ export function openUrl(url) {
   if (real()) real().openUrl(url);
   else window.open(url, "_blank");
 }
+
+// ---- 撮る（窓口 版 2。古い APK では何もしない）----
+export function cameraCall(name, ...args) {
+  const B = real();
+  if (B && typeof B[name] === "function") return B[name](...args);
+  return undefined;
+}
+export const cameraPermission = () => cameraCall("cameraPermission") || "none";
+export const requestCameraPermission = () => cameraCall("requestCameraPermission");
+export const cameraInfo = () => cameraCall("cameraInfo") || "{}";
+export const storageFree = () => cameraCall("storageFree") || "-1";
+export const openStockCamera = () => cameraCall("openStockCamera");
+export const takeLaunch = () => cameraCall("takeLaunch") || "";

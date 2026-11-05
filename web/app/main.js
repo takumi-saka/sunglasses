@@ -1,6 +1,7 @@
 // サングラスの入口（2026-11-05）。一覧と編集を切り替え、スマホの戻る操作・共有から開く・更新を受け持つ
 import { Engine } from "../engine/engine.js";
 import * as bridge from "./bridge.js";
+import { Camera } from "./camera.js";
 import { Editor } from "./editor.js";
 import { Library } from "./library.js";
 import { pref } from "./store.js";
@@ -28,11 +29,33 @@ async function boot() {
     onBack: () => showLibrary(),
     onSaved: (key) => library.markEdited(key),
   });
+  let shotSinceList = false;
+  const camera = new Camera(engine, {
+    onBack: () => showLibrary(),
+    onOpenItem: (item, thumb) => {
+      camera.close();
+      openItem(item, thumb);
+    },
+    onCaptured: () => (shotSinceList = true),
+  });
+  document.getElementById("lib-camera").onclick = () => showCamera();
+
+  function showCamera() {
+    editor.close();
+    library.hide();
+    screen = "camera";
+    camera.open();
+  }
 
   function showLibrary() {
     editor.close();
+    if (screen === "camera") camera.close();
     library.show();
     screen = "library";
+    if (shotSinceList) {
+      shotSinceList = false;
+      library.refresh();
+    }
     if (updateReady) location.reload();
   }
   function openItem(item, thumb) {
@@ -42,9 +65,28 @@ async function boot() {
   }
 
   // スマホの戻る操作（APK から呼ばれる）。true を返すと、ページの中で受け止めたことになる
-  window.__sunglassesBack = () => (screen === "editor" ? editor.back() : false);
-  window.addEventListener("sunglasses:resume", () => {
-    if (screen === "library") library.refresh();
+  window.__sunglassesBack = () => {
+    if (screen === "editor") return editor.back();
+    if (screen === "camera") {
+      showLibrary();
+      return true;
+    }
+    return false;
+  };
+  window.addEventListener("sunglasses:open-camera", () => showCamera());
+  window.addEventListener("sunglasses:resume", async () => {
+    if (screen === "camera") camera.open();
+    if (screen === "library") await library.refresh();
+    // 純正カメラで撮って戻ってきた: いま撮った RAW をすぐ開く
+    const t = pref("stockLaunch");
+    if (t && Date.now() - t < 15 * 60 * 1000) {
+      pref("stockLaunch", 0);
+      const newest = bridge.listRaw().find((it) => it.dateTaken >= t - 5000);
+      if (newest) {
+        if (screen === "camera") camera.close();
+        openItem(newest, null);
+      }
+    }
     if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
       navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
     }
@@ -56,6 +98,7 @@ async function boot() {
   });
 
   await library.refresh();
+  if (bridge.takeLaunch() === "camera") showCamera();
   const opened = bridge.takeOpened();
   if (opened.length) openItem(opened[0], null);
   if (pref("updated") && pref("updated") !== VERSION) toast(`新しい版（${VERSION}）にしました`);

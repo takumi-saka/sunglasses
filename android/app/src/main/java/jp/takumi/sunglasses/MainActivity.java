@@ -26,6 +26,13 @@ import android.util.Size;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.WindowManager;
+import android.graphics.SurfaceTexture;
+import android.opengl.GLSurfaceView;
+import android.os.StatFs;
+import android.view.KeyEvent;
+import android.view.OrientationEventListener;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.ServiceWorkerClient;
@@ -79,13 +86,16 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class MainActivity extends Activity {
     private static final String TAG = "Sunglasses";
-    private static final String HOST = "takumi-saka.github.io";
-    private static final String START_URL = "https://" + HOST + "/sunglasses/";
-    private static final String LOCAL = "/sunglasses/__local/";
-    private static final int BRIDGE_VERSION = 1;
+    // ページの住所（確かめ用の組み立てでは、この Mac の配信。android/app/build.gradle で決める）
+    private static final String HOST = BuildConfig.HOST;
+    private static final String START_URL = BuildConfig.START_URL;
+    private static final String LOCAL = BuildConfig.LOCAL_PREFIX;
+    private static final int BRIDGE_VERSION = 2; // 2: 撮る機能（2026-11-05）
+    private static final String ACTION_CAMERA = "jp.takumi.sunglasses.CAMERA";
     private static final int REQ_PICK = 1;
     private static final int REQ_CHOOSER = 2;
     private static final int REQ_PERMISSION = 3;
+    private static final int REQ_CAMERA = 4;
     private static final String[] RAW_MIMES = {"image/x-adobe-dng", "image/dng"};
 
     // 書き出しに写す撮影の情報（場所は別。ページが「場所も写す」と言ったときだけ写す）
@@ -105,6 +115,12 @@ public class MainActivity extends Activity {
     private final Map<String, Uri> opened = new ConcurrentHashMap<>();
     private final List<String> openedQueue = Collections.synchronizedList(new ArrayList<>());
     private final Map<String, File> saving = new ConcurrentHashMap<>();
+    private GLSurfaceView glView;
+    private PreviewRenderer renderer;
+    private CameraController camera;
+    private OrientationEventListener orient;
+    private int lastRotation = -1;
+    private volatile String launchMode = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -113,11 +129,45 @@ public class MainActivity extends Activity {
         getWindow().setNavigationBarColor(Color.BLACK);
         WebView.setWebContentsDebuggingEnabled(true);
 
+        // 撮る画面の画（下）とページ（上）を重ねる。撮る画面では、ページの地を透かして下の画を見せる
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.BLACK);
+        glView = new GLSurfaceView(this);
+        glView.setEGLContextClientVersion(3);
+        renderer = new PreviewRenderer(glView, new PreviewRenderer.Host() {
+            @Override
+            public void onSurfaceReady(SurfaceTexture st) {
+                camera.onSurfaceReady(st);
+            }
+
+            @Override
+            public void onSample(String json) {
+                dispatchJson("sunglasses:camera-sample", json);
+            }
+        });
+        glView.setRenderer(renderer);
+        glView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+        glView.setVisibility(View.GONE);
+        root.addView(glView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        camera = new CameraController(this, renderer, this::dispatchJson);
+        orient = new OrientationEventListener(this) {
+            @Override
+            public void onOrientationChanged(int o) {
+                if (o == ORIENTATION_UNKNOWN) return;
+                int r = ((o + 45) / 90 * 90) % 360;
+                if (r == lastRotation) return;
+                lastRotation = r;
+                camera.setDeviceRotation(r);
+                dispatchJson("sunglasses:orientation", "{\"deg\":" + r + "}");
+            }
+        };
+
         web = new WebView(this);
         web.setBackgroundColor(Color.BLACK);
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setHapticFeedbackEnabled(true);
-        setContentView(web);
+        root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(root);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -164,8 +214,37 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        // 純正カメラで撮って戻ってきたときに、ページが一覧を読み直せるように知らせる
+        glView.onResume();
+        // 純正カメラで撮って戻ってきたときに、ページが一覧を読み直せるように知らせる（撮る画面なら、ページがカメラを開き直す）
         dispatch("sunglasses:resume", "");
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // ほかのアプリがカメラを使えるように、離れるときは閉じる
+        if (camera.isOpen()) {
+            camera.close();
+            dispatchJson("sunglasses:camera", "{\"state\":\"paused\"}");
+        }
+        glView.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        camera.release();
+        renderer.release();
+        super.onDestroy();
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // 撮る画面では、音量ボタンをシャッターにする
+        if ((keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) && camera.isOpen()) {
+            if (event.getRepeatCount() == 0) dispatch("sunglasses:shutter-key", "");
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     @Override
@@ -206,12 +285,19 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_PERMISSION) dispatch("sunglasses:permission", permissionState());
+        if (requestCode == REQ_CAMERA) dispatch("sunglasses:camera-permission", cameraPermission());
     }
 
     // ---- ほかのアプリから渡されたファイル ----
 
     private void handleIntent(Intent i) {
         if (i == null || i.getAction() == null) return;
+        if (ACTION_CAMERA.equals(i.getAction())) {
+            // ホーム画面のアイコンを長押しして「撮る」を選んだ
+            launchMode = "camera";
+            dispatch("sunglasses:open-camera", "");
+            return;
+        }
         Uri u = null;
         if (Intent.ACTION_SEND.equals(i.getAction())) {
             u = i.getParcelableExtra(Intent.EXTRA_STREAM);
@@ -237,6 +323,29 @@ public class MainActivity extends Activity {
         runOnUiThread(() -> web.evaluateJavascript(js, null));
     }
 
+    // detail に JSON の値をそのまま渡す（中身はこのアプリが作ったものだけ）
+    private void dispatchJson(String name, String json) {
+        if (web == null) return;
+        final String js = "window.dispatchEvent(new CustomEvent(" + JSONObject.quote(name) + ",{detail:" + json + "}))";
+        runOnUiThread(() -> web.evaluateJavascript(js, null));
+    }
+
+    private String cameraPermission() {
+        return checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED ? "granted" : "none";
+    }
+
+    // 撮る画面の枠（ページから、画面の画素で受け取る）
+    private void setPreviewRect(float x, float y, float w, float h) {
+        renderer.setRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+    }
+
+    private static float[] floats(JSONArray a) {
+        if (a == null) return null;
+        float[] f = new float[a.length()];
+        for (int i = 0; i < f.length; i++) f[i] = (float) a.optDouble(i);
+        return f;
+    }
+
     private void showOffline() {
         String html = "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
                 + "<body style='background:#000;color:#ddd;font-family:sans-serif;padding:32px;line-height:1.8'>"
@@ -253,16 +362,17 @@ public class MainActivity extends Activity {
         if (url == null || !HOST.equals(url.getHost())) return null;
         String path = url.getPath();
         if (path == null || !path.startsWith(LOCAL)) return null;
-        List<String> seg = url.getPathSegments();  // sunglasses, __local, 種類, ...
+        List<String> seg = url.getPathSegments();  // （sunglasses,）__local, 種類, ...
+        int b = seg.indexOf("__local");
         try {
-            String kind = seg.size() > 2 ? seg.get(2) : "";
+            String kind = b >= 0 && seg.size() > b + 1 ? seg.get(b + 1) : "";
             switch (kind) {
                 case "media":
-                    return stream(original(mediaUri(seg.get(3), Long.parseLong(seg.get(4)))), "application/octet-stream");
+                    return stream(original(mediaUri(seg.get(b + 2), Long.parseLong(seg.get(b + 3)))), "application/octet-stream");
                 case "thumb":
-                    return thumb(mediaUri(seg.get(3), Long.parseLong(seg.get(4))), intOr(url.getQueryParameter("s"), 384));
+                    return thumb(mediaUri(seg.get(b + 2), Long.parseLong(seg.get(b + 3))), intOr(url.getQueryParameter("s"), 384));
                 case "opened": {
-                    Uri u = opened.get(seg.get(3));
+                    Uri u = opened.get(seg.get(b + 2));
                     return u == null ? text(404, "not found") : stream(u, "application/octet-stream");
                 }
                 case "ping":
@@ -768,6 +878,135 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void exit() {
             runOnUiThread(MainActivity.this::finish);
+        }
+
+        // ---- 撮る（窓口 版 2）----
+        @JavascriptInterface
+        public String cameraPermission() {
+            return MainActivity.this.cameraPermission();
+        }
+
+        @JavascriptInterface
+        public void requestCameraPermission() {
+            runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAMERA));
+        }
+
+        @JavascriptInterface
+        public String cameraInfo() {
+            return camera.info();
+        }
+
+        // 枠は画面の画素（ページの CSS の画素 × devicePixelRatio）
+        @JavascriptInterface
+        public void cameraOpen(String id, float x, float y, float w, float h) {
+            runOnUiThread(() -> {
+                setPreviewRect(x, y, w, h);
+                web.setBackgroundColor(Color.TRANSPARENT);
+                glView.setVisibility(View.VISIBLE);
+                if (orient.canDetectOrientation()) orient.enable();
+                camera.open(id);
+            });
+        }
+
+        @JavascriptInterface
+        public void cameraSetRect(float x, float y, float w, float h) {
+            runOnUiThread(() -> setPreviewRect(x, y, w, h));
+        }
+
+        @JavascriptInterface
+        public void cameraClose() {
+            runOnUiThread(() -> {
+                camera.close();
+                orient.disable();
+                glView.setVisibility(View.GONE);
+                web.setBackgroundColor(Color.BLACK);
+            });
+        }
+
+        // 核の色の対応表（半精度の RGB を base64 で）。loHi は [lo の赤緑青, hi の赤緑青]
+        @JavascriptInterface
+        public void cameraSetLook(String base64Half, int n, String loHi) {
+            try {
+                JSONArray a = new JSONArray(loHi);
+                renderer.setLut(base64Half, n, new float[]{(float) a.getDouble(0), (float) a.getDouble(1), (float) a.getDouble(2)},
+                        new float[]{(float) a.getDouble(3), (float) a.getDouble(4), (float) a.getDouble(5)});
+            } catch (Exception e) {
+                Log.w(TAG, "look", e);
+            }
+        }
+
+        // m: sRGB の光の量 → AP1 の行列（9 個）、curve: 撮る画面の画の値 → 光の量の曲線
+        @JavascriptInterface
+        public void cameraSetLookParams(String json) {
+            try {
+                JSONObject o = new JSONObject(json);
+                renderer.setParams(floats(o.optJSONArray("m")), floats(o.optJSONArray("curve")));
+            } catch (Exception e) {
+                Log.w(TAG, "params", e);
+            }
+        }
+
+        @JavascriptInterface
+        public void cameraSetGain(float g) {
+            renderer.setGain(g);
+        }
+
+        @JavascriptInterface
+        public void cameraSetLookOn(boolean on) {
+            renderer.setLookOn(on);
+        }
+
+        @JavascriptInterface
+        public void cameraSetZebra(boolean on) {
+            renderer.setZebra(on);
+        }
+
+        @JavascriptInterface
+        public void cameraSetEv(float ev) {
+            camera.setEv(ev);
+        }
+
+        @JavascriptInterface
+        public void cameraFocus(float nx, float ny, boolean lock) {
+            camera.focusAt(nx, ny, lock);
+        }
+
+        @JavascriptInterface
+        public void cameraUnlock() {
+            camera.unlock();
+        }
+
+        @JavascriptInterface
+        public void cameraCapture(boolean sound) {
+            camera.capture(sound);
+        }
+
+        @JavascriptInterface
+        public String storageFree() {
+            try {
+                return String.valueOf(new StatFs(Environment.getExternalStorageDirectory().getPath()).getAvailableBytes());
+            } catch (Exception e) {
+                return "-1";
+            }
+        }
+
+        @JavascriptInterface
+        public void openStockCamera() {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA));
+                } catch (Exception ignored) {
+                    // 純正カメラが無ければ何もしない
+                }
+            });
+        }
+
+        // ホーム画面のアイコンの長押しから開いたか（1 回だけ返す）
+        @JavascriptInterface
+        public String takeLaunch() {
+            String m = launchMode;
+            launchMode = "";
+            return m;
         }
     }
 }

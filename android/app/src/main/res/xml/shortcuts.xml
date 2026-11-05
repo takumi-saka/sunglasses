@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ホーム画面のアイコンを長押しすると出る「撮る」。押すと、撮る画面から始まる -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="camera"
+        android:shortcutLongLabel="@string/shortcut_camera_long"
+        android:shortcutShortLabel="@string/shortcut_camera">
+        <intent
+            android:action="jp.takumi.sunglasses.CAMERA"
+            android:targetClass="jp.takumi.sunglasses.MainActivity"
+            android:targetPackage="jp.takumi.sunglasses" />
+    </shortcut>
+</shortcuts>
