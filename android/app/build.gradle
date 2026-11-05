@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'jp.takumi.sunglasses'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'jp.takumi.sunglasses'
+        minSdk 29
+        targetSdk 34
+        // GitHub で作るたびに番号が上がるので、上から入れ直せる
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int)
+        versionName '1.0'
+    }
+
+    // 署名の鍵は公開の置き場に入れず、GitHub の秘密の保管場所から渡す（同じ鍵で署名しないと上から入れ直せない）。
+    // 鍵が無いとき（この Mac で試しに作るとき）は、開発用の鍵で署名する。
+    signingConfigs {
+        release {
+            def ks = System.getenv('SG_KEYSTORE')
+            storeFile ks ? file(ks) : null
+            storePassword System.getenv('SG_KEYSTORE_PASSWORD')
+            keyAlias 'sunglasses'
+            keyPassword System.getenv('SG_KEYSTORE_PASSWORD')
+            storeType 'pkcs12'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig System.getenv('SG_KEYSTORE') ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

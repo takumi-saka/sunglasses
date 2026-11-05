@@ -1,0 +1,53 @@
+name: Build Android app
+
+# android/ を直して main に入れたときだけ、スマホに入れるアプリのファイル（APK）を作り直し、
+# https://github.com/takumi-saka/sunglasses/releases/download/app-latest/sunglasses.apk に置く。
+# アプリの中身（画面と画の処理）はページ（web/）なので、ふだんの直しでは APK は作り直さない。
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Signing key
+        env:
+          KEY_B64: ${{ secrets.SG_KEYSTORE_B64 }}
+        run: echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+      - name: Build APK
+        env:
+          SG_KEYSTORE: ${{ runner.temp }}/release.p12
+          SG_KEYSTORE_PASSWORD: ${{ secrets.SG_KEYSTORE_PASSWORD }}
+        run: gradle -p android assembleRelease --no-daemon --stacktrace
+      - name: Publish APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk sunglasses.apk
+          gh release delete app-latest --yes --cleanup-tag || true
+          gh release create app-latest sunglasses.apk --title "サングラス（スマホのアプリ）" --notes "最新のアプリのファイルです。sunglasses.apk をスマホでダウンロードしてインストールしてください。中身はページから読むので、ふだんは入れ直さなくても新しくなります。" --latest

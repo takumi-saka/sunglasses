@@ -1,0 +1,10 @@
+.DS_Store
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.p12
+*.jks
+*.keystore
+wasm/build/
+wasm/third_party/
