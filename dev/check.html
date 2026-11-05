@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>画の処理の確かめ</title>
+<canvas id="c" width="800" height="600"></canvas>
+<script type="module">
+  // 確かめ用: RAW を開き、決まった幅で、核ごと・段ごとに描いた画（PNG）と、露光量の値を返す
+  import { Engine, defaultParams } from "/engine/engine.js";
+  window.__run = async (dngUrl, width, modes) => {
+    const e = window.__e || (window.__e = await Engine.create(document.getElementById("c")));
+    const buf = await (await fetch(dngUrl)).arrayBuffer();
+    const t0 = performance.now();
+    const im = await e.openRaw(buf);
+    const out = { meta: im.meta, key: im.key, w: im.w, h: im.h, decodeMs: performance.now() - t0, results: [] };
+    for (const m of modes) {
+      const p = defaultParams();
+      p.core = m.core;
+      if (m.kind === "lut") Object.assign(p, { soften: -100, halation: -100, bloom: -100, grain: -100 });
+      if (m.kind === "nograin") p.grain = -100;
+      Object.assign(p, m.params || {});
+      e.params = p;
+      const t1 = performance.now();
+      const r = e.renderPixels(width, { compare: m.kind === "neutral" });
+      const ms = performance.now() - t1;
+      const cv = document.createElement("canvas");
+      cv.width = r.width;
+      cv.height = r.height;
+      cv.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(r.pixels.buffer), r.width, r.height), 0, 0);
+      out.results.push({ ...m, ev: e.autoEv(m.core), evNeutral: e.autoEv("neutral"), ms, png: cv.toDataURL("image/png") });
+    }
+    return out;
+  };
+  window.__ready = true;
+</script>
