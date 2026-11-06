@@ -1,7 +1,7 @@
 // 編集の画面（2026-11-05）。
 // 写真の上: 押している間は元の画、2 回たたくと全画面、2 本指でつまむと拡大、拡大中は 1 本指で動かす。
 // 下の板: 核の箱・つまみ（よく使う／明るさ／色／色ごと／グレーディング／効果／細部／切り抜き）。
-import { defaultParams } from "../engine/engine.js";
+import { defaultParams, SUN_CORE } from "../engine/engine.js";
 import * as bridge from "./bridge.js";
 import { cropForAspect, panCrop, rotateCrop, zoomCrop } from "./crop.js";
 import { curveEditor } from "./curve.js";
@@ -471,11 +471,9 @@ export class Editor {
     });
     const row = h("div", { class: "cores" }, boxes);
     requestAnimationFrame(() => this.drawCoreThumbs(row));
-    const name = this.engine.coreById(this.params.core).name, plus = this.params.core === "aftersun";
-    const note = h("p", { class: "note" }, plus
-      ? `Sun Level は、0 で素の画、50 で ${name} 弱め、100 で ${name}。あいだはなめらかに混ざります。`
-      : `Sun Level は、0 で素の画、100 で ${name}。あいだはなめらかに混ざります。`);
-    return [row, this.knob("sunLevel", { snaps: plus ? [50] : [] }), note];
+    const name = this.engine.coreById(this.params.core).name;
+    const note = h("p", { class: "note" }, `Sun Level は、0 で素の画、${SUN_CORE} で ${name} そのまま、100 でその 1.5 倍。${SUN_CORE} で軽く止まります。`);
+    return [row, this.knob("sunLevel", { snaps: [SUN_CORE] }), note];
   }
 
   // 核の箱の中に、いまの写真をその核で描いた小さな画を出す

@@ -12,7 +12,7 @@
 //   S・ISO・ピントは、アプリを開き直すと自動に戻す（覚えない）。WB と AF は覚える。
 // 撮った写真は、撮ったときのルック・Sun Level・明るさのまま編集で開く（写真ごとの直しの記録に入れておく）。
 import * as C from "../engine/color.js";
-import { defaultParams } from "../engine/engine.js";
+import { defaultParams, SUN_CORE } from "../engine/engine.js";
 import * as bridge from "./bridge.js";
 import { pref, setEdit } from "./store.js";
 import { h, ring, toast } from "./ui.js";
@@ -685,9 +685,10 @@ export class Camera {
       this.evRing.setReadonly(full);
       this.showEv(this.expo.display);
       const lvStops = [];
-      for (let v = 0; v <= 100; v++) lvStops.push({ v, mark: v % 50 === 0 ? "major" : v % 10 === 0 ? "minor" : null, label: v % 50 === 0 ? String(v) : null, gap: 3.4 });
+      // 67 は核そのもの（100 はその 1.5 倍）。印を付けて、軽く止まる
+      for (let v = 0; v <= 100; v++) lvStops.push({ v, mark: v % 50 === 0 || v === SUN_CORE ? "major" : v % 10 === 0 ? "minor" : null, label: v % 50 === 0 ? String(v) : null, gap: 3.4 });
       const lv = ring({
-        label: "", extra: h("span", { class: "cam-dial-extra" }, tabs("sun")), stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: this.family === "aftersun" ? [50] : [],
+        label: "", extra: h("span", { class: "cam-dial-extra" }, tabs("sun")), stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: [SUN_CORE],
         onInput: (v) => {
           this.sunLevel = v;
           pref("cameraSunLevel", v);

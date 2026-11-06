@@ -198,7 +198,7 @@ void main() {
   vec3 rgb = vec3(0.0);
   if (uWA > 0.0) rgb += uWA * lookA(ap0);
   if (uWB > 0.0) rgb += uWB * lookB(ap0);
-  if (uWN > 0.0) rgb += uWN * neutral(ap0);
+  if (uWN != 0.0) rgb += uWN * neutral(ap0); // 核より強くするときはマイナス（素の画から離れる向きに伸ばす）
   vec3 lab = rgb2lab(rgb);
   if (uKnobs == 1) lab = knobs(lab);
   o = vec4(lab, 1.0);

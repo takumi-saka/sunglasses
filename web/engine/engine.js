@@ -11,6 +11,10 @@ const GRADE_ZONES = [["shadows", 25], ["midtones", 20], ["highlights", 25], ["gl
 const zone = () => ({ hue: 0, sat: 0, lum: 0 });
 
 // つまみの初期値（0 が核のまま）
+// Sun Level 100 のときの強さ（核そのものの何倍か）。67 で核そのもの
+export const SUN_GAIN = 1.5;
+export const SUN_CORE = Math.round(100 / SUN_GAIN);
+
 export function defaultParams() {
   return {
     core: "aftersun", sunLevel: 100,
@@ -139,19 +143,25 @@ export class Engine {
   }
 
   // Sun Level（0〜100）から、混ぜる核と重みを決める（2026-11-06 に核を3つにした）。
-  // Aftersun+（id aftersun、最初の形）は 0 が素の画・50 が弱め・100 が Aftersun+（あいだはなめらかに混ぜる）。
-  // Aftersun（id aftersun2、逆算の形）と Nostalgia（id mine）は、0 が素の画・100 がその核
+  // 効きは 1.5 倍（本人 11/6「100 にしたとき、今の 150 くらいの加工に」）: 100 で核の 1.5 倍、67 で核そのもの。
+  // 核より強い所は、素の画から離れる向きに伸ばす（素の画の重みがマイナスになる）。色だけを伸ばし、粒や白みは核の量まで。
+  // Aftersun+（id aftersun、最初の形）は、強さ 0.5 で弱めの核を挟む。ほかの核は、素の画からその核へなめらかに混ぜる
   lookFor(p) {
-    const L = C.clamp((p.sunLevel ?? p.strength ?? 100) / 100, 0, 1);
-    if (p.core !== "aftersun") return { A: this.coreById(p.core), wA: L, B: null, wB: 0, wN: 1 - L };
+    const s = C.clamp((p.sunLevel ?? p.strength ?? 100) / 100, 0, 1) * SUN_GAIN;
+    if (p.core !== "aftersun") return { A: this.coreById(p.core), wA: s, B: null, wB: 0, wN: 1 - s };
     const A = this.coreById("weak"), B = this.coreById("aftersun");
-    return L <= 0.5 ? { A, wA: 2 * L, B, wB: 0, wN: 1 - 2 * L } : { A, wA: 2 - 2 * L, B, wB: 2 * L - 1, wN: 0 };
+    if (s <= 0.5) return { A, wA: 2 * s, B, wB: 0, wN: 1 - 2 * s };
+    if (s <= 1) return { A, wA: 2 - 2 * s, B, wB: 2 * s - 1, wN: 0 };
+    return { A, wA: 0, B, wB: s, wN: 1 - s };
   }
 
-  // 核ごとの値（にじみ・白み・やわらかさ・粒）を重みで混ぜる。素の画は 0（フィルムらしさも素に戻る）
+  // 核ごとの値（にじみ・白み・やわらかさ・粒）を重みで混ぜる。素の画は 0（フィルムらしさも素に戻る）。
+  // Sun Level で核より強くしたときも、これらは核の量で止める（色だけを伸ばす）
   _mixedCore(lk) {
-    const sum = (k) => lk.wA * lk.A[k] + (lk.B ? lk.wB * lk.B[k] : 0);
-    const w = lk.wA + lk.wB || 1, avg = (k) => sum(k) / w;
+    const tot = lk.wA + (lk.B ? lk.wB : 0), cap = tot > 1 ? 1 / tot : 1;
+    const raw = (k) => lk.wA * lk.A[k] + (lk.B ? lk.wB * lk.B[k] : 0);
+    const sum = (k) => raw(k) * cap;
+    const w = tot || 1, avg = (k) => raw(k) / w;
     return { soften: sum("soften"), grain: sum("grain"), grainSize: avg("grainSize"), halation: sum("halation"), bloom: sum("bloom"), bloomWarm: avg("bloomWarm") };
   }
 
