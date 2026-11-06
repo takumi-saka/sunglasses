@@ -40,6 +40,12 @@ await shot("01_一覧");
   await page.waitForTimeout(1500);
   log.push(["消したあとの枚数", n0, await page.locator(".tile").count(), await page.locator(".toast-text").textContent().catch(() => "")]);
   await shot("01c_消したあと");
+  // スマホの長押しの合図（contextmenu）でも、選ぶ形に入る
+  await page.locator(".tile").nth(0).dispatchEvent("contextmenu");
+  await page.waitForTimeout(200);
+  log.push(["長押しの合図で選ぶ", await page.locator("#lib-sel-count").textContent()]);
+  await page.click("#lib-sel-cancel");
+  await page.waitForTimeout(200);
 }
 
 // 写真を開く
@@ -124,6 +130,16 @@ await page.mouse.click(206, 450);
 await page.waitForTimeout(600);
 log.push(["横で2回たたいたあと", await page.evaluate(() => document.getElementById("editor").className)]);
 await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 0 } })));
+
+// 編集の「…」から、この写真を削除 → 一覧に戻る（前の知らせが消えるのを待つ）
+await page.waitForFunction(() => !document.querySelector(".toast.is-on"), null, { timeout: 8000 }).catch(() => {});
+await page.click("#ed-more");
+await page.waitForTimeout(400);
+await shot("18_ほかの操作");
+const nBefore = await page.evaluate(() => window.__fakeBridge.listRaw().length);
+await page.locator(".menu-row.is-danger").click();
+await page.waitForTimeout(1500);
+log.push(["編集から削除", { 一覧に戻った: await page.evaluate(() => !document.getElementById("library").hidden), 枚数: [nBefore, await page.evaluate(() => window.__fakeBridge.listRaw().length)], 知らせ: await page.locator(".toast-text").textContent().catch(() => "") }]);
 
 fs.writeFileSync(path.join(outDir, "記録.json"), JSON.stringify({ log, errors }, null, 1));
 console.log(JSON.stringify({ log, errors }, null, 1));

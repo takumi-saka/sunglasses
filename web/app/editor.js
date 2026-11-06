@@ -6,13 +6,19 @@ import * as bridge from "./bridge.js";
 import { cropForAspect, panCrop, rotateCrop, zoomCrop } from "./crop.js";
 import { curveEditor } from "./curve.js";
 import { ASPECTS, GRADE_ZONES, GROUPS, HSL_COLORS, HSL_NAMES, KNOBS, changed } from "./knobs.js";
-import { getEdit, pref, setEdit } from "./store.js";
+import { deleteEdit, getEdit, pref, setEdit } from "./store.js";
 import { closeSheet, h, sheet, slider, toast } from "./ui.js";
 
 const CORE_BANDS = { aftersun2: ["#9a9a6e", "#d9c7a4"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
 const AUTO_CORE = "aftersun2"; // 昼の写真はいまは Aftersun（逆算の形）。夜の核ができたら、夜の写真は夜の核を選ぶ
 const FLIP_DEG = { 3: 180, 5: -90, 6: 90 };
 const clone = (o) => JSON.parse(JSON.stringify(o));
+const trashIcon = () => {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.innerHTML = '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>';
+  return svg;
+};
 
 function mergeParams(saved) {
   const p = defaultParams();
@@ -37,6 +43,7 @@ export class Editor {
     this.engine = engine;
     this.onBack = onBack;
     this.onSaved = onSaved;
+    window.addEventListener("sunglasses:deleted", (e) => this.onDeleted(e.detail || {}));
     window.addEventListener("sunglasses:orientation", (e) => {
       this.deviceDeg = e.detail.deg;
       this.updateLand();
@@ -578,7 +585,31 @@ export class Editor {
         this.commit();
         this.renderPanel();
         bridge.haptic("detent");
-      })));
+      }),
+      // ゴミ箱: この写真をスマホから消す（Android の確認が1回出る）。読み込んだファイル（一覧に無い写真）は消せない
+      h("button", {
+        class: "menu-row is-danger", disabled: this.item && this.item.id !== undefined ? null : "disabled",
+        onClick: () => (closeSheet(), this.deleteThis()),
+      }, h("span", { class: "menu-ic" }, trashIcon()), "この写真を削除", h("small", {}, "スマホから元の RAW（DNG）を消します。元に戻せません"))));
+  }
+
+  deleteThis() {
+    const it = this.item;
+    if (!it) return;
+    this.deleting = it;
+    if (!bridge.deleteMedia([it])) {
+      this.deleting = null;
+      toast("写真を消すには、アプリの入れ直しが必要です。", [["入れ直す", () => bridge.openUrl(bridge.APK_URL)]], 8000);
+    }
+  }
+
+  // 消せたら、直しの記録も消して一覧に戻る（一覧の側で「〇枚を削除しました」と出す）
+  async onDeleted(d) {
+    const it = this.deleting;
+    this.deleting = null;
+    if (!it || !d.ok) return;
+    await deleteEdit(bridge.keyOf(it));
+    if (this.item === it) this.onBack();
   }
 
   // ---------- 書き出し ----------

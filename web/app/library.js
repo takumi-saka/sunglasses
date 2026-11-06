@@ -4,6 +4,8 @@ import { deleteEdit, editedKeys, getEdit } from "./store.js";
 import { h, toast } from "./ui.js";
 
 const THUMB_CACHE = "sg-thumbs-v2"; // v2: RAW から作る形に変えた（2026-11-05）
+const LONG_PRESS_MS = 400; // Android の長押しの標準（ViewConfiguration.getLongPressTimeout の既定）
+const TOUCH_SLOP = 8; // Android のタッチの許し幅の標準（8dp。ページの 1px はおよそ 1dp）
 const AUTO_CORE = "aftersun2"; // 直していない写真は Aftersun（逆算の形）で見せる
 
 export class Library {
@@ -113,7 +115,7 @@ export class Library {
   tile(it) {
     const key = bridge.keyOf(it);
     // まずスマホの小さな画（核なし）をすぐ出し、RAW から核をかけた画ができたら差し替える
-    const img = h("img", { class: "thumb", alt: "", decoding: "async", loading: "lazy", src: bridge.thumbUrl(it) });
+    const img = h("img", { class: "thumb", alt: "", decoding: "async", loading: "lazy", draggable: "false", src: bridge.thumbUrl(it) });
     img.onload = () => el.classList.add("is-ready");
     const el = h("button", {
       class: "tile" + (this.edited.has(key) ? " is-edited" : "") + (this.selected.has(key) ? " is-selected" : ""),
@@ -122,25 +124,35 @@ export class Library {
         if (this.selecting) this.toggle(el);
         else this.onOpen(it, img.src || null);
       },
-      onContextmenu: (e) => e.preventDefault(),
     }, img, h("span", { class: "mark" }), h("span", { class: "check" }));
     el._item = it;
     el._img = img;
     el._key = key;
+    // 長押し: 押している時間と、スマホが出す長押しの合図（contextmenu。Android の設定どおりに出る）の、早い方で選ぶ形に入る。
+    // 値は Android の標準にそろえる（本人 11/6）: 押している時間 400 ミリ秒（ViewConfiguration の長押しの標準）、
+    // 指の動きの許し幅 8dp（タッチの許し幅の標準。これを超えると一覧のスクロールに切り替わる）
     let timer = 0, sx = 0, sy = 0;
+    const onLong = () => {
+      clearTimeout(timer);
+      if (el._long) return;
+      el._long = true;
+      bridge.haptic("confirm");
+      if (!this.selecting) this.startSelect();
+      this.toggle(el, true);
+    };
     el.addEventListener("pointerdown", (e) => {
       el._long = false;
       sx = e.clientX;
       sy = e.clientY;
-      timer = setTimeout(() => {
-        el._long = true;
-        bridge.haptic("confirm");
-        if (!this.selecting) this.startSelect();
-        this.toggle(el, true);
-      }, 450);
+      clearTimeout(timer);
+      timer = setTimeout(onLong, LONG_PRESS_MS);
     });
-    el.addEventListener("pointermove", (e) => Math.hypot(e.clientX - sx, e.clientY - sy) > 10 && clearTimeout(timer));
-    for (const ev of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(ev, () => clearTimeout(timer));
+    el.addEventListener("pointermove", (e) => Math.hypot(e.clientX - sx, e.clientY - sy) > TOUCH_SLOP && clearTimeout(timer));
+    for (const ev of ["pointerup", "pointercancel"]) el.addEventListener(ev, () => clearTimeout(timer));
+    el.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      onLong();
+    });
     this.io.observe(el);
     return el;
   }
