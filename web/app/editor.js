@@ -9,8 +9,8 @@ import { ASPECTS, GRADE_ZONES, GROUPS, HSL_COLORS, HSL_NAMES, KNOBS, changed } f
 import { getEdit, pref, setEdit } from "./store.js";
 import { closeSheet, h, sheet, slider, toast } from "./ui.js";
 
-const CORE_BANDS = { aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
-const AUTO_CORE = "aftersun"; // 昼の写真はいまは Aftersun。夜の核ができたら、夜の写真は夜の核を選ぶ
+const CORE_BANDS = { aftersun2: ["#9a9a6e", "#d9c7a4"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
+const AUTO_CORE = "aftersun2"; // 昼の写真はいまは Aftersun（逆算の形）。夜の核ができたら、夜の写真は夜の核を選ぶ
 const FLIP_DEG = { 3: 180, 5: -90, 6: 90 };
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -448,10 +448,11 @@ export class Editor {
     });
     const row = h("div", { class: "cores" }, boxes);
     requestAnimationFrame(() => this.drawCoreThumbs(row));
-    const note = h("p", { class: "note" }, this.params.core === "mine"
-      ? "Sun Level は、0 で素の画、100 で自分の好み。"
-      : "Sun Level は、0 で素の画、50 で Aftersun 弱め、100 で Aftersun。あいだはなめらかに混ざります。");
-    return [row, this.knob("sunLevel", { snaps: this.params.core === "mine" ? [] : [50] }), note];
+    const name = this.engine.coreById(this.params.core).name, plus = this.params.core === "aftersun";
+    const note = h("p", { class: "note" }, plus
+      ? `Sun Level は、0 で素の画、50 で ${name} 弱め、100 で ${name}。あいだはなめらかに混ざります。`
+      : `Sun Level は、0 で素の画、100 で ${name}。あいだはなめらかに混ざります。`);
+    return [row, this.knob("sunLevel", { snaps: plus ? [50] : [] }), note];
   }
 
   // 核の箱の中に、いまの写真をその核で描いた小さな画を出す

@@ -138,11 +138,12 @@ export class Engine {
     return this.cores.find((c) => c.id === id) || this.cores[0];
   }
 
-  // Sun Level（0〜100）から、混ぜる核と重みを決める。
-  // Aftersun は 0 が素の画・50 が Aftersun 弱め・100 が Aftersun（あいだはなめらかに混ぜる）。自分の好みは 0 が素の画・100 が自分の好み
+  // Sun Level（0〜100）から、混ぜる核と重みを決める（2026-11-06 に核を3つにした）。
+  // Aftersun+（id aftersun、最初の形）は 0 が素の画・50 が弱め・100 が Aftersun+（あいだはなめらかに混ぜる）。
+  // Aftersun（id aftersun2、逆算の形）と Nostalgia（id mine）は、0 が素の画・100 がその核
   lookFor(p) {
     const L = C.clamp((p.sunLevel ?? p.strength ?? 100) / 100, 0, 1);
-    if (p.core === "mine") return { A: this.coreById("mine"), wA: L, B: null, wB: 0, wN: 1 - L };
+    if (p.core !== "aftersun") return { A: this.coreById(p.core), wA: L, B: null, wB: 0, wN: 1 - L };
     const A = this.coreById("weak"), B = this.coreById("aftersun");
     return L <= 0.5 ? { A, wA: 2 * L, B, wB: 0, wN: 1 - 2 * L } : { A, wA: 2 - 2 * L, B, wB: 2 * L - 1, wN: 0 };
   }

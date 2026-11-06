@@ -4,7 +4,7 @@ import { editedKeys, getEdit } from "./store.js";
 import { h } from "./ui.js";
 
 const THUMB_CACHE = "sg-thumbs-v2"; // v2: RAW から作る形に変えた（2026-11-05）
-const AUTO_CORE = "aftersun";
+const AUTO_CORE = "aftersun2"; // 直していない写真は Aftersun（逆算の形）で見せる
 
 export class Library {
   constructor(engine, { onOpen, version }) {

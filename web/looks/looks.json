@@ -3,9 +3,36 @@
  "targetL": 47.24595069885254,
  "cores": [
   {
-   "id": "aftersun",
+   "id": "aftersun2",
    "name": "Aftersun",
-   "desc": "映画の色に一番寄せた核",
+   "desc": "映画の色に一番近い核（Aftersun を普通の写真に戻した差から作った形、2026-11-06）",
+   "file": "aftersun2.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": 6.541,
+   "halation": 0.212,
+   "bloom": 0.0,
+   "bloomWarm": 1.0,
+   "soften": 0.5,
+   "grain": 3.0,
+   "grainSize": 25.0,
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0
+  },
+  {
+   "id": "aftersun",
+   "name": "Aftersun+",
+   "desc": "最初の Aftersun（青緑を足した形）",
    "file": "aftersun.bin",
    "size": 65,
    "lo": [
@@ -31,8 +58,8 @@
   },
   {
    "id": "mine",
-   "name": "自分の好み",
-   "desc": "本人の直しから学んだ核（青緑を抜いて、やわらかく）",
+   "name": "Nostalgia",
+   "desc": "本人の好みの核（日本のフィルムカメラのように、青緑を抜いてやわらかく）",
    "file": "mine.bin",
    "size": 65,
    "lo": [
@@ -58,8 +85,8 @@
   },
   {
    "id": "weak",
-   "name": "Aftersun 弱め",
-   "desc": "Aftersun の色付けを弱くした核",
+   "name": "Aftersun+ 弱め",
+   "desc": "Aftersun+ の色付けを弱くした核",
    "file": "weak.bin",
    "size": 65,
    "lo": [

@@ -27,6 +27,9 @@ const SETTINGS = {
 };
 const log2 = (x) => Math.log(x) / Math.LN2;
 const onOff = (b) => (b ? "オン" : "オフ");
+// 右下のルックで、たたくたびに替わる順（2026-11-06）。名前は looks.json の核の名前を使う
+const FAMILIES = ["aftersun2", "aftersun", "mine"];
+const FAMILY_NAMES = { aftersun2: "Aftersun", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
 
 // シャッター速度と ISO の 1/3 段の目盛り（端末が出せる範囲だけを使う）。手応えは 1 段ごと
 const S_STOPS = [1 / 8000, 1 / 6400, 1 / 5000, 1 / 4000, 1 / 3200, 1 / 2500, 1 / 2000, 1 / 1600, 1 / 1250, 1 / 1000, 1 / 800, 1 / 640, 1 / 500, 1 / 400, 1 / 320, 1 / 250, 1 / 200, 1 / 160,
@@ -74,7 +77,12 @@ export class Camera {
     this.openKey = null; // 手で決める撮り方のうち、輪を出している項目
     this.pro = { s: null, iso: null, focus: null, wb: pref("cameraWb") || "auto", af: pref("cameraAf") || "continuous" };
     this.settings = { frame: "1.85", timer: 0, zebra: true, sound: true, autoJpeg: false, ...(pref("camera") || {}) };
-    this.family = pref("cameraFamily") || "aftersun";
+    // 核を3つにしたとき（2026-11-06）、前の Aftersun を選んでいた人は、1回だけ新しい Aftersun に移す
+    if (!pref("cameraFamilyV2")) {
+      if ((pref("cameraFamily") || "aftersun") === "aftersun") pref("cameraFamily", "aftersun2");
+      pref("cameraFamilyV2", 1);
+    }
+    this.family = FAMILIES.includes(pref("cameraFamily")) ? pref("cameraFamily") : "aftersun2";
     this.sunLevel = pref("cameraSunLevel") ?? 100;
     this.build();
     window.addEventListener("sunglasses:camera", (e) => this.onCamera(e.detail));
@@ -195,7 +203,7 @@ export class Camera {
     }
     this.els.frame.dataset.frame = s.frame;
     this.els.grid.hidden = s.frame !== "thirds";
-    const name = this.family === "mine" ? "自分の好み" : "Aftersun";
+    const name = (this.engine.cores && this.engine.cores.find((c) => c.id === this.family) || {}).name || FAMILY_NAMES[this.family];
     this.els.coreBtn.replaceChildren(h("small", {}, "ルック"), h("b", {}, name), h("span", { class: "cam-core-hint" }, "長押しで元の画"));
   }
 
@@ -334,7 +342,7 @@ export class Camera {
   }
 
   async nextFamily() {
-    this.family = this.family === "mine" ? "aftersun" : "mine";
+    this.family = FAMILIES[(FAMILIES.indexOf(this.family) + 1) % FAMILIES.length];
     pref("cameraFamily", this.family);
     bridge.haptic("tick");
     this.renderSettings();
@@ -656,7 +664,7 @@ export class Camera {
       const lvStops = [];
       for (let v = 0; v <= 100; v++) lvStops.push({ v, mark: v % 50 === 0 ? "major" : v % 10 === 0 ? "minor" : null, label: v % 50 === 0 ? String(v) : null, gap: 3.4 });
       const lv = ring({
-        label: "Sun Level", stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: this.family === "mine" ? [] : [50],
+        label: "Sun Level", stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: this.family === "aftersun" ? [50] : [],
         onInput: (v) => {
           this.sunLevel = v;
           pref("cameraSunLevel", v);
