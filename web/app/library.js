@@ -1,7 +1,7 @@
 // 一覧の画面（2026-11-05）。RAW だけを新しい順に、撮った日ごとに並べる。小さな画にも核をかける。
 import * as bridge from "./bridge.js";
-import { editedKeys, getEdit } from "./store.js";
-import { h } from "./ui.js";
+import { deleteEdit, editedKeys, getEdit } from "./store.js";
+import { h, toast } from "./ui.js";
 
 const THUMB_CACHE = "sg-thumbs-v2"; // v2: RAW から作る形に変えた（2026-11-05）
 const AUTO_CORE = "aftersun2"; // 直していない写真は Aftersun（逆算の形）で見せる
@@ -19,6 +19,14 @@ export class Library {
     this.queue = [];
     this.busy = false;
     document.getElementById("lib-open").onclick = () => this.openFile();
+    // 写真を選んでまとめて消す（長押しで選ぶ形に入る。2026-11-06）
+    this.selecting = false;
+    this.selected = new Set();
+    this.selBar = document.getElementById("lib-select");
+    document.getElementById("lib-sel-cancel").onclick = () => this.endSelect();
+    document.getElementById("lib-sel-all").onclick = () => this.selectAll();
+    document.getElementById("lib-sel-delete").onclick = () => this.deleteSelected();
+    window.addEventListener("sunglasses:deleted", (e) => this.onDeleted(e.detail || {}));
     this.io = new IntersectionObserver((entries) => {
       for (const e of entries) {
         if (!e.isIntersecting) continue;
@@ -107,11 +115,90 @@ export class Library {
     // まずスマホの小さな画（核なし）をすぐ出し、RAW から核をかけた画ができたら差し替える
     const img = h("img", { class: "thumb", alt: "", decoding: "async", loading: "lazy", src: bridge.thumbUrl(it) });
     img.onload = () => el.classList.add("is-ready");
-    const el = h("button", { class: "tile" + (this.edited.has(key) ? " is-edited" : ""), onClick: () => this.onOpen(it, img.src || null) }, img, h("span", { class: "mark" }));
+    const el = h("button", {
+      class: "tile" + (this.edited.has(key) ? " is-edited" : "") + (this.selected.has(key) ? " is-selected" : ""),
+      onClick: () => {
+        if (el._long) return (el._long = false);
+        if (this.selecting) this.toggle(el);
+        else this.onOpen(it, img.src || null);
+      },
+      onContextmenu: (e) => e.preventDefault(),
+    }, img, h("span", { class: "mark" }), h("span", { class: "check" }));
     el._item = it;
     el._img = img;
+    el._key = key;
+    let timer = 0, sx = 0, sy = 0;
+    el.addEventListener("pointerdown", (e) => {
+      el._long = false;
+      sx = e.clientX;
+      sy = e.clientY;
+      timer = setTimeout(() => {
+        el._long = true;
+        bridge.haptic("confirm");
+        if (!this.selecting) this.startSelect();
+        this.toggle(el, true);
+      }, 450);
+    });
+    el.addEventListener("pointermove", (e) => Math.hypot(e.clientX - sx, e.clientY - sy) > 10 && clearTimeout(timer));
+    for (const ev of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(ev, () => clearTimeout(timer));
     this.io.observe(el);
     return el;
+  }
+
+  startSelect() {
+    this.selecting = true;
+    this.selected.clear();
+    this.root.classList.add("is-selecting");
+    this.selBar.hidden = false;
+    this.renderSelect();
+  }
+  endSelect() {
+    this.selecting = false;
+    this.selected.clear();
+    this.root.classList.remove("is-selecting");
+    this.selBar.hidden = true;
+    for (const t of this.list.querySelectorAll(".tile.is-selected")) t.classList.remove("is-selected");
+  }
+  toggle(el, on) {
+    const k = el._key, now = on === undefined ? !this.selected.has(k) : on;
+    if (now) this.selected.add(k);
+    else this.selected.delete(k);
+    el.classList.toggle("is-selected", now);
+    if (on === undefined) bridge.haptic("tick");
+    this.renderSelect();
+  }
+  selectAll() {
+    const tiles = [...this.list.querySelectorAll(".tile")];
+    const all = tiles.length && tiles.every((t) => this.selected.has(t._key));
+    for (const t of tiles) this.toggle(t, !all);
+    bridge.haptic("tick");
+  }
+  renderSelect() {
+    const n = this.selected.size;
+    document.getElementById("lib-sel-count").textContent = n ? `${n}枚を選択` : "写真を選んでください";
+    document.getElementById("lib-sel-delete").disabled = !n;
+  }
+  // 選んだ写真を消す。Android の確認が1回出て、許可するとまとめて消える（元の RAW がスマホから消える）
+  deleteSelected() {
+    const items = (this.items || []).filter((it) => this.selected.has(bridge.keyOf(it)));
+    if (!items.length) return;
+    this.deleting = items;
+    if (!bridge.deleteMedia(items)) {
+      this.deleting = null;
+      toast("写真を消すには、アプリの入れ直しが必要です。", [["入れ直す", () => bridge.openUrl(bridge.APK_URL)]], 8000);
+    }
+  }
+  async onDeleted(d) {
+    const items = this.deleting || [];
+    this.deleting = null;
+    if (!d.ok) {
+      if (d.error) toast("消せませんでした。（" + d.error + "）");
+      return;
+    }
+    for (const it of items) await deleteEdit(bridge.keyOf(it));
+    toast(`${d.count || items.length}枚を削除しました`);
+    this.endSelect();
+    await this.refresh();
   }
 
   markEdited(key) {

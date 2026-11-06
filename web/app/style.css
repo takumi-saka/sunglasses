@@ -81,6 +81,18 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .knurl { width: 62px; height: 62px; border-radius: 50%; background: var(--knurl); display: grid; place-items: center; }
 .knurl::after { content: ""; width: 46px; height: 46px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px #000; transition: transform .08s, background .08s; }
 .shoot-btn:active .knurl::after { transform: scale(.93); background: var(--accent); }
+/* 写真を選んでまとめて消す: 長押しで選ぶ形に入る。下の撮影の所が、選ぶ・消すの行に替わる */
+.lib.is-selecting .lib-shoot { display: none; }
+.lib-select { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; align-items: center; gap: 18px; padding: 14px var(--edge) calc(18px + env(safe-area-inset-bottom)); background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.92) 35%); }
+.lib-select[hidden] { display: none; }
+.lib-sel-count { flex: 1; font-size: 14px; font-weight: 500; }
+.lib-sel-btn { padding: 10px 2px; font-size: 15px; font-weight: 500; color: var(--sub); }
+.lib-sel-btn.is-danger { color: var(--accent); font-weight: 700; }
+.tile .check { position: absolute; right: 6px; top: 6px; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.85); background: rgba(0,0,0,.25); opacity: 0; transition: opacity .15s; }
+.lib.is-selecting .tile .check { opacity: 1; }
+.tile.is-selected .check { background: var(--accent); border-color: var(--accent); }
+.tile.is-selected .check::after { content: ""; position: absolute; left: 7px; top: 3px; width: 5px; height: 10px; border: solid #000; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.lib.is-selecting .tile.is-selected .thumb { opacity: .72; }
 
 /* ---------- 編集 ---------- */
 .ed-top { display: flex; align-items: center; gap: 2px; height: 56px; padding: 0 14px 0 4px; }
@@ -201,7 +213,21 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 /* カメラの画は APK がページの下に描く。撮る画面の間は、ページの地を透かし、枠の所だけ下の画を見せる */
 html.is-camera, html.is-camera body { background: transparent; }
 .cam { background: transparent; }
-.cam-top, .cam-info, .cam-lenses, .cam-pro, .cam-ev, .cam-bottom { background: var(--body); }
+.cam-top, .cam-ev, .cam-bottom { background: var(--body); }
+/* 画の上の端と下の端に重ねる行（残りの枚数・レンズ・手で決める撮り方）。薄い黒の帯の上に乗せる */
+.cam-over { position: absolute; left: 0; right: 0; z-index: 2; }
+.cam-over-top { top: 0; padding-bottom: 12px; background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0)); pointer-events: none; }
+.cam-over-bottom { bottom: 0; padding-top: 26px; background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.62) 42%); }
+.cam-over .cam-lenses { justify-content: center; padding: 0 var(--edge) 2px; }
+.cam-view .ed-badge { top: 42px; }
+.cam-bubble { z-index: 3; }
+.cam-msg { z-index: 4; }
+/* 露出と Sun Level を切り替える見出し */
+.cam-dial-extra { display: inline-flex; align-items: center; gap: 14px; }
+.cam-tabs { display: inline-flex; gap: 16px; }
+.cam-tab { position: relative; padding: 4px 0; font-size: 14px; color: var(--sub); }
+.cam-tab.is-on { color: var(--ink); }
+.cam-tab.is-on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 1px; background: var(--accent); }
 .cam-top { display: flex; align-items: center; gap: 4px; height: 58px; padding: 0 6px 0 4px; }
 /* 上の設定: 5 つを同じ幅に固定（値の字数が変わっても横にずれない）。値の下にローレットの線 */
 .cam-sets { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -247,12 +273,13 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-pro-cell.is-open small { color: var(--ink); }
 .cam-pro-cell.is-open::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -4px; border: 4px solid transparent; border-top-color: var(--accent); }
 /* 露出と Sun Level（と、手で決める項目）の輪。高さを固定して、輪を入れかえても撮る画面の大きさが変わらないように */
-.cam-ev { min-height: 140px; padding-top: 4px; }
+.cam-ev { min-height: 94px; padding-top: 4px; }
 .cam-auto { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--hair); font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--sub); }
 .cam-auto.is-on { background: var(--accent); border-color: var(--accent); color: #000; }
 .cam-meter { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--hair); font-size: 11px; letter-spacing: .06em; color: var(--sub); }
 .cam-note { margin: 0 var(--edge) 4px; font-size: 11px; color: var(--sub); }
 .rg { padding: 6px var(--edge) 4px; touch-action: none; }
+.rg-label:empty { display: none; }
 .rg-head { display: flex; align-items: center; gap: 10px; min-height: 22px; font-size: 14px; }
 .rg-val { margin-left: auto; font: 500 14px var(--mono); font-variant-numeric: tabular-nums; letter-spacing: 0; white-space: nowrap; }
 .rg.is-active .rg-val { color: var(--accent); }
@@ -265,7 +292,7 @@ html.is-camera, html.is-camera body { background: transparent; }
 .rg.is-auto .rg-index, .rg.is-readonly .rg-index { background: var(--ink); }
 .rg.is-auto .rg-val { color: var(--sub); }
 .rg.is-man .rg-val { color: var(--accent); }
-.cam-bottom { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 8px var(--edge) calc(18px + env(safe-area-inset-bottom)); }
+.cam-bottom { flex: none; margin-top: auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 8px var(--edge) calc(18px + env(safe-area-inset-bottom)); }
 .cam-thumb { justify-self: start; width: 52px; height: 52px; border-radius: 8px; background: #121212 center / cover no-repeat; opacity: .35; }
 .cam-thumb.is-on { opacity: 1; }
 .cam-shutter { width: 78px; height: 78px; border-radius: 50%; background: var(--knurl); display: grid; place-items: center; }

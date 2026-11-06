@@ -90,12 +90,14 @@ public class MainActivity extends Activity {
     private static final String HOST = BuildConfig.HOST;
     private static final String START_URL = BuildConfig.START_URL;
     private static final String LOCAL = BuildConfig.LOCAL_PREFIX;
-    private static final int BRIDGE_VERSION = 3; // 2: 撮る機能、3: 核を 2 つ混ぜる・手動のシャッター速度など（2026-11-05）
+    private static final int BRIDGE_VERSION = 4; // 2: 撮る機能、3: 核を 2 つ混ぜる・手動のシャッター速度など（2026-11-05）、4: 写真の削除（2026-11-06）
     private static final String ACTION_CAMERA = "jp.takumi.sunglasses.CAMERA";
     private static final int REQ_PICK = 1;
     private static final int REQ_CHOOSER = 2;
     private static final int REQ_PERMISSION = 3;
     private static final int REQ_CAMERA = 4;
+    private static final int REQ_DELETE = 5;
+    private int pendingDeleteCount = 0;
     private static final String[] RAW_MIMES = {"image/x-adobe-dng", "image/dng"};
 
     // 書き出しに写す撮影の情報（場所は別。ページが「場所も写す」と言ったときだけ写す）
@@ -262,6 +264,13 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_DELETE) {
+            // 本人が Android の確認で「許可」を押したら消えている
+            boolean ok = resultCode == RESULT_OK;
+            dispatchJson("sunglasses:deleted", "{\"ok\":" + ok + ",\"count\":" + (ok ? pendingDeleteCount : 0) + "}");
+            pendingDeleteCount = 0;
+            return;
+        }
         List<Uri> uris = new ArrayList<>();
         if (resultCode == RESULT_OK && data != null) {
             if (data.getClipData() != null) {
@@ -723,6 +732,44 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String listRaw() {
             return listRawJson();
+        }
+
+        // 写真を消す（版 4）。json は [{ "volume": …, "id": … }, …]。Android 11 以降は、Android の確認を1回出して、まとめて消す。
+        // 結果は sunglasses:deleted（{ ok, count }）で知らせる
+        @JavascriptInterface
+        public void deleteMedia(String json) {
+            runOnUiThread(() -> {
+                try {
+                    JSONArray a = new JSONArray(json);
+                    ArrayList<Uri> uris = new ArrayList<>();
+                    for (int i = 0; i < a.length(); i++) {
+                        JSONObject o = a.getJSONObject(i);
+                        uris.add(mediaUri(o.getString("volume"), o.getLong("id")));
+                    }
+                    if (uris.isEmpty()) {
+                        dispatchJson("sunglasses:deleted", "{\"ok\":false,\"count\":0}");
+                        return;
+                    }
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        pendingDeleteCount = uris.size();
+                        android.app.PendingIntent pi = MediaStore.createDeleteRequest(getContentResolver(), uris);
+                        startIntentSenderForResult(pi.getIntentSender(), REQ_DELETE, null, 0, 0, 0);
+                    } else {
+                        int n = 0;
+                        for (Uri u : uris) {
+                            try {
+                                n += getContentResolver().delete(u, null, null);
+                            } catch (Exception e) {
+                                Log.w(TAG, "delete " + u, e);
+                            }
+                        }
+                        dispatchJson("sunglasses:deleted", "{\"ok\":" + (n > 0) + ",\"count\":" + n + "}");
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "delete", e);
+                    dispatchJson("sunglasses:deleted", "{\"ok\":false,\"count\":0,\"error\":" + JSONObject.quote(String.valueOf(e.getMessage())) + "}");
+                }
+            });
         }
 
         @JavascriptInterface

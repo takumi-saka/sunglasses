@@ -22,6 +22,26 @@ await page.waitForTimeout(1500);
 log.push(["一覧が出るまで", Date.now() - t0]);
 await shot("01_一覧");
 
+// 長押しで選ぶ形に入り、もう1枚たたいて、まとめて消す（写真を開く確かめの写真は消さない）
+{
+  const tiles = page.locator(".tile");
+  const n0 = await tiles.count();
+  const b0 = await tiles.nth(0).boundingBox();
+  await page.mouse.move(b0.x + b0.width / 2, b0.y + b0.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(650);
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  await tiles.nth(1).click();
+  await page.waitForTimeout(200);
+  log.push(["選んだ数", await page.locator("#lib-sel-count").textContent()]);
+  await shot("01b_選ぶ");
+  await page.click("#lib-sel-delete");
+  await page.waitForTimeout(1500);
+  log.push(["消したあとの枚数", n0, await page.locator(".tile").count(), await page.locator(".toast-text").textContent().catch(() => "")]);
+  await shot("01c_消したあと");
+}
+
 // 写真を開く
 const t1 = Date.now();
 await page.evaluate((name) => {

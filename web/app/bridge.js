@@ -27,6 +27,15 @@ export function listRaw() {
   if (fake()) return fake().listRaw();
   return real() ? JSON.parse(real().listRaw()) : [];
 }
+// 写真を消す（窓口 版 4）。結果は sunglasses:deleted で届く。古い APK では false を返す
+export const DELETE_BRIDGE = 4;
+export function deleteMedia(items) {
+  const list = items.map((it) => ({ volume: it.volume, id: it.id }));
+  if (fake() && fake().deleteMedia) return fake().deleteMedia(list), true;
+  if (!real() || bridgeVersion() < DELETE_BRIDGE) return false;
+  real().deleteMedia(JSON.stringify(list));
+  return true;
+}
 export function keyOf(item) {
   return item.token ? `opened:${item.name}:${item.size}` : `${item.volume}:${item.id}:${item.dateModified}`;
 }

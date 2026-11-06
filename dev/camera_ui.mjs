@@ -106,6 +106,10 @@ await shot("c0_一覧");
 await page.click("#lib-camera");
 await page.waitForTimeout(2200);
 await shot("c1_撮る画面");
+log.画の大きさ = await page.evaluate(() => {
+  const r = document.getElementById("cam-view").getBoundingClientRect();
+  return { 画の幅: Math.round(r.width), 画の高さ: Math.round(r.height), 画面: [innerWidth, innerHeight] };
+});
 log.開いたときの呼び出し = await page.evaluate(() => window.__calls.filter((c) => ["open", "slot", "w", "rect", "manual"].includes(c[0])).slice(0, 8));
 log.自動の露出_明るい景色 = await val(0);
 await page.evaluate(() => (window.__sceneLevel = 35));
@@ -144,7 +148,10 @@ await drag("#cam-ev .rg", 0, 30);
 await doubleTap("#cam-ev .rg", 0);
 log.二回たたいて自動へ = await page.locator(".cam-auto").getAttribute("class");
 
-// Sun Level を左へ（値が増える向き）、右へ（減る向き）
+// Sun Level を左へ（値が増える向き）、右へ（減る向き）。露出と Sun Level は見出しで切り替える
+await page.locator(".cam-tab:visible", { hasText: "Sun Level" }).click();
+await page.waitForTimeout(200);
+log.切り替えたあとの輪 = await page.evaluate(() => [...document.querySelectorAll("#cam-ev .rg")].map((r) => r.getAttribute("aria-label") + (r.hidden ? "（隠れている）" : "（出ている）")));
 await clear();
 await drag("#cam-ev .rg", 1, 120);
 log.SunLevel = { 値: await val(1), 最後の重み: (await calls("w")).slice(-1) };

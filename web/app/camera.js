@@ -666,11 +666,16 @@ export class Camera {
       const full = this.fullManual();
       const autoBtn = full ? h("span", { class: "cam-meter" }, "露出計") : h("button", { class: "cam-auto" + (this.expo.auto ? " is-on" : ""), onClick: () => this.setAuto() }, "自動");
       this.autoBtn = full ? null : autoBtn;
+      // 露出と Sun Level は同時に動かさないので、1本の輪にして見出しで切り替える（画を大きくするため）
+      const dial = pref("cameraDial") === "sun" ? "sun" : "ev";
+      const tabs = (cur) => h("span", { class: "cam-tabs" },
+        h("button", { class: "cam-tab" + (cur === "ev" ? " is-on" : ""), onClick: () => this.setDial("ev") }, "露出"),
+        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), onClick: () => this.setDial("sun") }, "Sun Level"));
       const evStops = [];
       for (let k = -9; k <= 9; k++) evStops.push({ v: k / 3, mark: k % 3 ? "minor" : "major", label: k % 3 ? null : (k > 0 ? "+" : k < 0 ? "−" : "") + Math.abs(k / 3), gap: 17 });
       this.evStops = evStops;
       this.evRing = ring({
-        label: "露出", stops: evStops, index: 9, extra: autoBtn, fmt: (v) => fmtEv(v),
+        label: "", stops: evStops, index: 9, extra: h("span", { class: "cam-dial-extra" }, tabs("ev"), autoBtn), fmt: (v) => fmtEv(v),
         tick: (i) => evStops[i].mark === "major",
         onInput: (v) => {
           this.setManual(v);
@@ -683,7 +688,7 @@ export class Camera {
       const lvStops = [];
       for (let v = 0; v <= 100; v++) lvStops.push({ v, mark: v % 50 === 0 ? "major" : v % 10 === 0 ? "minor" : null, label: v % 50 === 0 ? String(v) : null, gap: 3.4 });
       const lv = ring({
-        label: "Sun Level", stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: this.family === "aftersun" ? [50] : [],
+        label: "", extra: h("span", { class: "cam-dial-extra" }, tabs("sun")), stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: this.family === "aftersun" ? [50] : [],
         onInput: (v) => {
           this.sunLevel = v;
           pref("cameraSunLevel", v);
@@ -697,6 +702,11 @@ export class Camera {
           this.sendWeights();
         },
       });
+      this.evRing.el.setAttribute("aria-label", "露出");
+      lv.el.setAttribute("aria-label", "Sun Level");
+      this.evRing.el.hidden = dial !== "ev";
+      lv.el.hidden = dial !== "sun";
+      this.dialEls = { ev: this.evRing.el, sun: lv.el };
       const kids = [this.evRing.el, lv.el];
       if (!this.v3) kids.push(h("p", { class: "cam-note" }, "撮る画面で Sun Level を見るには、アプリの入れ直しが必要です（撮った写真には効きます）"));
       this.els.ev.replaceChildren(...kids);
@@ -705,6 +715,14 @@ export class Camera {
       this.layoutView();
       this.sendRect();
     }
+  }
+
+  setDial(k) {
+    if (!this.dialEls || this.dialEls[k].hidden === false) return;
+    pref("cameraDial", k);
+    this.dialEls.ev.hidden = k !== "ev";
+    this.dialEls.sun.hidden = k !== "sun";
+    bridge.haptic("tick");
   }
 
   // 露出の輪に値を出す（自動の値や露出計の値は、目盛りの途中も指す）
@@ -950,7 +968,7 @@ export class Camera {
     const v = this.view;
     let timer = 0, start = null, longDone = false;
     v.addEventListener("pointerdown", (e) => {
-      if (!this.opened) return;
+      if (!this.opened || e.target.closest(".cam-over-bottom")) return;
       start = { x: e.clientX, y: e.clientY };
       longDone = false;
       timer = setTimeout(() => {

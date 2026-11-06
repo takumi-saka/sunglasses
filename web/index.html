@@ -18,6 +18,12 @@
   <div id="lib-banner"></div>
   <div id="lib-list" class="lib-list"></div>
   <div class="lib-shoot"><button id="lib-camera" class="shoot-btn"><span class="knurl"></span><span>撮影</span></button></div>
+  <div id="lib-select" class="lib-select" hidden>
+    <button id="lib-sel-cancel" class="lib-sel-btn">やめる</button>
+    <span id="lib-sel-count" class="lib-sel-count"></span>
+    <button id="lib-sel-all" class="lib-sel-btn">すべて</button>
+    <button id="lib-sel-delete" class="lib-sel-btn is-danger">削除</button>
+  </div>
 </section>
 
 <section id="editor" class="screen ed" hidden>
@@ -61,12 +67,12 @@
     <div id="cam-level" class="cam-level"></div>
     <div id="cam-ring" class="cam-ring"></div>
     <div id="cam-badge" class="ed-badge" hidden></div>
-    <div id="cam-msg" class="cam-msg" hidden></div>
     <div id="cam-bubble" class="cam-bubble" aria-hidden="true"><small></small><b></b></div>
+    <!-- 画を画面の幅いっぱいにするため、細かい行は画の上の端と下の端に重ねる（2026-11-06） -->
+    <div class="cam-over cam-over-top"><div class="cam-info"><span id="cam-readout" class="cam-readout"></span><span id="cam-count" class="cam-count"></span><canvas id="cam-hist" class="hist"></canvas></div></div>
+    <div class="cam-over cam-over-bottom"><div id="cam-lenses" class="chips cam-lenses"></div><div id="cam-pro" class="cam-pro"></div></div>
+    <div id="cam-msg" class="cam-msg" hidden></div>
   </div>
-  <div class="cam-info"><span id="cam-readout" class="cam-readout"></span><span id="cam-count" class="cam-count"></span><canvas id="cam-hist" class="hist"></canvas></div>
-  <div id="cam-lenses" class="chips cam-lenses"></div>
-  <div id="cam-pro" class="cam-pro"></div>
   <div id="cam-ev" class="cam-ev"></div>
   <div class="cam-bottom">
     <button id="cam-thumb" class="cam-thumb rot" aria-label="撮った写真を開く"></button>
