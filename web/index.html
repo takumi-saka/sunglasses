@@ -68,11 +68,11 @@
     <div id="cam-ring" class="cam-ring"></div>
     <div id="cam-badge" class="ed-badge" hidden></div>
     <div id="cam-bubble" class="cam-bubble" aria-hidden="true"><small></small><b></b></div>
-    <!-- 画を画面の幅いっぱいにするため、細かい行は画の上の端と下の端に重ねる（2026-11-06） -->
-    <div class="cam-over cam-over-top"><div class="cam-info"><span id="cam-readout" class="cam-readout"></span><span id="cam-count" class="cam-count"></span><canvas id="cam-hist" class="hist"></canvas></div></div>
-    <div class="cam-over cam-over-bottom"><div id="cam-lenses" class="chips cam-lenses"></div><div id="cam-pro" class="cam-pro"></div></div>
     <div id="cam-msg" class="cam-msg" hidden></div>
   </div>
+  <!-- 写真には何も重ねない（本人 11/6）。レンズの切り替えは残りの枚数の行に入れて、1行減らす -->
+  <div class="cam-info"><span id="cam-readout" class="cam-readout"></span><div id="cam-lenses" class="cam-lenses"></div><span id="cam-count" class="cam-count"></span><canvas id="cam-hist" class="hist"></canvas></div>
+  <div id="cam-pro" class="cam-pro"></div>
   <div id="cam-ev" class="cam-ev"></div>
   <div class="cam-bottom">
     <button id="cam-thumb" class="cam-thumb rot" aria-label="撮った写真を開く"></button>

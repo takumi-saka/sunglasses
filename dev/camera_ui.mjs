@@ -1,14 +1,14 @@
 // 確かめ用: スマホの窓口（SunglassesBridge 版 3）の代わりを入れて、撮る画面を動かす（2026-11-05、2026-11-06 に輪のつまみ・手で決める撮り方・たたいた所の明るさ）
 // 代わりの窓口は、カメラが開いた知らせと、0.4 秒ごとの小さな画（明るさを window.__sceneLevel で変えられる。左が暗く右が明るい）を流す。
-// 使い方: node dev/camera_ui.mjs <配信の番号> <書き出し先> <playwright の index.mjs>
+// 使い方: node dev/camera_ui.mjs <配信の番号> <書き出し先> <playwright の index.mjs> [画面の高さ（既定 915）]
 import fs from "node:fs";
 import path from "node:path";
 
-const [, , port, outDir, pwPath] = process.argv;
+const [, , port, outDir, pwPath, vh = "915"] = process.argv;
 const { chromium } = await import(pwPath);
 fs.mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({ args: ["--use-angle=metal", "--ignore-gpu-blocklist"] });
-const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true });
+const ctx = await browser.newContext({ viewport: { width: 412, height: +vh }, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true });
 await ctx.addInitScript(() => {
   window.__calls = [];
   const rec = (n, ...a) => window.__calls.push([n, ...a]);

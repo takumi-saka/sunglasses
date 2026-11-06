@@ -567,8 +567,7 @@ export class Camera {
     });
     r.el.classList.add(isAuto ? "is-auto" : "is-man");
     this.proRing = r;
-    const note = key === "af" ? "連続: 動く物を追い続ける　1回: たたいた所で止める" : key === "wb" && !this.caps().post ? "このレンズは、色温度を数字で決められません" : "左の端の A で自動。2回たたいても自動に戻ります";
-    return [r.el, h("p", { class: "cam-note" }, note)];
+    return [r.el];
   }
 
   setPro(key, v) {
@@ -968,7 +967,7 @@ export class Camera {
     const v = this.view;
     let timer = 0, start = null, longDone = false;
     v.addEventListener("pointerdown", (e) => {
-      if (!this.opened || e.target.closest(".cam-over-bottom")) return;
+      if (!this.opened) return;
       start = { x: e.clientX, y: e.clientY };
       longDone = false;
       timer = setTimeout(() => {
