@@ -6,7 +6,10 @@ const FILES = __FILES__;
 const CACHE = "sg-app-" + VERSION;
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // 部品は手元の写し（HTTP のキャッシュ）を使わず、必ずサーバーから取り直す。
+  // GitHub のページは 10 分の写しを許すので、写しを使うと、新しい版の係が古いページを覚え直してしまう
+  // （2026-11-06 に本人の「更新されない」を Chromium で再現して直した。Workbox などと同じ形）
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (e) => {

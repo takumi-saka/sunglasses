@@ -315,5 +315,3 @@ html.is-land-cam .cam-set > span { font-size: 8.5px; }
 .cam-bubble.is-name b { font: 700 24px var(--sans); letter-spacing: .04em; }
 /* 編集の全画面で端末を横にしたとき: 写真の入れ物を回して、横長の写真を画面いっぱいに */
 .ed.is-full.is-land .ed-photo { position: fixed; left: 50%; top: 50%; width: 100vh; height: 100vw; flex: none; transform: translate(-50%, -50%) rotate(var(--land-rot, 0deg)); }
-
-/* 2026-11-06 版の入れ替わりを確かめるための1行（中身は変えない） */
