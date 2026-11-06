@@ -234,6 +234,13 @@ await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
 await page.waitForTimeout(600);
 log.たたいたあとのルック = await page.locator("#cam-core b").textContent();
 await shot("c7_あと");
+// 横に倒したとき: 字の出る所が回り、回している値が吹き出しに出る
+await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 90 } })));
+await page.waitForTimeout(400);
+await drag("#cam-ev .rg", 1, 40);
+log.横の吹き出し = { 見出し: await page.locator("#cam-bubble small").textContent(), 値: await page.locator("#cam-bubble b").textContent(), 出ている: await page.locator("#cam-bubble").getAttribute("class") };
+await shot("c8_横");
+log.横の回り = await page.evaluate(() => [".cam-pro-cell", "#cam-badge", ".cam-set"].map((s) => getComputedStyle(document.querySelector(s)).transform));
 log.使っている書体 = await page.evaluate(() => [...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family + " " + f.weight));
 fs.writeFileSync(path.join(outDir, "記録.json"), JSON.stringify({ log, errors }, null, 1));
 console.log(JSON.stringify({ log, errors }, null, 1));

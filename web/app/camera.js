@@ -105,7 +105,7 @@ export class Camera {
     this.els = {
       frame: $("cam-frame"), grid: $("cam-grid"), level: $("cam-level"), ring: $("cam-ring"), badge: $("cam-badge"),
       count: $("cam-count"), readout: $("cam-readout"), hist: $("cam-hist"), thumb: $("cam-thumb"), shutter: $("cam-shutter"),
-      coreBtn: $("cam-core"), ev: $("cam-ev"), pro: $("cam-pro"), lenses: $("cam-lenses"), msg: $("cam-msg"),
+      coreBtn: $("cam-core"), ev: $("cam-ev"), pro: $("cam-pro"), lenses: $("cam-lenses"), msg: $("cam-msg"), bubble: $("cam-bubble"),
     };
     $("cam-back").onclick = () => this.onBack();
     for (const key of Object.keys(SETTINGS)) this.wheel($("cam-set-" + (key === "autoJpeg" ? "jpeg" : key)), key);
@@ -341,11 +341,23 @@ export class Camera {
     if (this.v3) bridge.cameraCall("cameraSetWeights", lk.wN, lk.wA, lk.wB);
   }
 
+  // 輪を回している間とルックを替えたときに、値や名前を画の上に大きく出す（端末の向きに合わせて回る）
+  bubble(label, text, ms = 700) {
+    const b = this.els.bubble;
+    b.querySelector("small").textContent = label;
+    b.querySelector("b").textContent = text;
+    b.classList.toggle("is-name", label === "ルック");
+    b.classList.add("is-on");
+    clearTimeout(this.bubbleTimer);
+    this.bubbleTimer = setTimeout(() => b.classList.remove("is-on"), ms);
+  }
+
   async nextFamily() {
     this.family = FAMILIES[(FAMILIES.indexOf(this.family) + 1) % FAMILIES.length];
     pref("cameraFamily", this.family);
     bridge.haptic("tick");
     this.renderSettings();
+    this.bubble("ルック", this.els.coreBtn.querySelector("b").textContent, 1100);
     this.buildControls();
     await this.sendLook();
   }
@@ -430,7 +442,7 @@ export class Camera {
     this.proCells = {};
     this.els.pro.replaceChildren(...PRO.map(([key, label]) => {
       const b = h("b");
-      const cell = h("button", { class: "cam-pro-cell", onClick: () => this.toggleProRing(key) }, h("small", {}, label), b);
+      const cell = h("button", { class: "cam-pro-cell rot", onClick: () => this.toggleProRing(key) }, h("small", {}, label), b);
       this.proCells[key] = { cell, b };
       return cell;
     }));
@@ -543,7 +555,10 @@ export class Camera {
     const r = ring({
       label: name, stops, index, fmt,
       tick: (i) => stops[i].mark === "major",
-      onInput: (v) => this.setPro(key, key === "wb" && v === "auto" ? "auto" : v),
+      onInput: (v) => {
+        this.setPro(key, key === "wb" && v === "auto" ? "auto" : v);
+        this.bubble(name, fmt(v));
+      },
       onReset: () => {
         if (key === "af") return;
         this.setPro(key, key === "wb" ? "auto" : null);
@@ -657,7 +672,11 @@ export class Camera {
       this.evRing = ring({
         label: "露出", stops: evStops, index: 9, extra: autoBtn, fmt: (v) => fmtEv(v),
         tick: (i) => evStops[i].mark === "major",
-        onInput: (v) => this.setManual(v), onReset: () => this.setAuto(),
+        onInput: (v) => {
+          this.setManual(v);
+          this.bubble("露出", fmtEv(v));
+        },
+        onReset: () => this.setAuto(),
       });
       this.evRing.setReadonly(full);
       this.showEv(this.expo.display);
@@ -669,6 +688,7 @@ export class Camera {
           this.sunLevel = v;
           pref("cameraSunLevel", v);
           this.sendWeights();
+          this.bubble("Sun Level", String(v));
         },
         onReset: () => {
           this.sunLevel = 100;
@@ -970,6 +990,7 @@ export class Camera {
     this.deg = deg;
     const r = deg === 90 ? -90 : deg === 270 ? 90 : deg === 180 ? 180 : 0;
     document.documentElement.style.setProperty("--rot", r + "deg");
+    document.documentElement.classList.toggle("is-land-cam", deg === 90 || deg === 270);
     this.els.frame.dataset.land = deg === 90 || deg === 270 ? "1" : "0";
   }
 

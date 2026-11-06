@@ -277,3 +277,15 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-core-hint { margin-top: 4px; font-size: 11px; color: var(--sub); }
 .cam-core.is-raw b { color: var(--accent); }
 .rot { transition: transform .25s; transform: rotate(var(--rot, 0deg)); }
+/* 撮る画面の知らせ（AE/AFロック・手ぶれ・タイマー）も、端末の向きに合わせて回す */
+#cam-badge { transform: translateX(-50%) rotate(var(--rot, 0deg)); transition: transform .25s; }
+/* 横に倒したとき、上の設定は回ると縦に長くなるので、見出しの字を小さくして画面の端で切れないようにする */
+html.is-land-cam .cam-set > span { font-size: 8.5px; }
+/* 値の吹き出し: 輪を回している間と、ルックを替えたとき */
+.cam-bubble { position: absolute; left: 50%; top: 40%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 20px 12px; border-radius: 14px; background: rgba(0,0,0,.5); pointer-events: none; opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)); transition: opacity .18s, transform .25s; }
+.cam-bubble.is-on { opacity: 1; }
+.cam-bubble small { font-size: 11px; color: rgba(238,234,226,.75); }
+.cam-bubble b { font: 500 30px var(--mono); letter-spacing: 0; color: var(--ink); white-space: nowrap; }
+.cam-bubble.is-name b { font: 700 24px var(--sans); letter-spacing: .04em; }
+/* 編集の全画面で端末を横にしたとき: 写真の入れ物を回して、横長の写真を画面いっぱいに */
+.ed.is-full.is-land .ed-photo { position: fixed; left: 50%; top: 50%; width: 100vh; height: 100vw; flex: none; transform: translate(-50%, -50%) rotate(var(--land-rot, 0deg)); }

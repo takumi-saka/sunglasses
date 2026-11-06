@@ -92,6 +92,19 @@ await page.mouse.click(ph.x + ph.width / 2, ph.y + ph.height / 2);
 await page.waitForTimeout(500);
 await shot("16_全画面");
 
+// 全画面のまま端末を横にすると、写真を回して画面いっぱいに見せる（アプリは縦で固定）
+await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 90 } })));
+await page.waitForTimeout(900);
+await shot("17_全画面_横");
+log.push(["全画面の横", await page.evaluate(() => ({ 印: document.getElementById("editor").className, 画の大きさ: [document.getElementById("photo-canvas").width, document.getElementById("photo-canvas").height] }))]);
+// 横のまま 2 回たたくと全画面を抜け、縦の画面に戻る
+await page.mouse.click(206, 450);
+await page.waitForTimeout(80);
+await page.mouse.click(206, 450);
+await page.waitForTimeout(600);
+log.push(["横で2回たたいたあと", await page.evaluate(() => document.getElementById("editor").className)]);
+await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 0 } })));
+
 fs.writeFileSync(path.join(outDir, "記録.json"), JSON.stringify({ log, errors }, null, 1));
 console.log(JSON.stringify({ log, errors }, null, 1));
 await browser.close();

@@ -37,6 +37,10 @@ export class Editor {
     this.engine = engine;
     this.onBack = onBack;
     this.onSaved = onSaved;
+    window.addEventListener("sunglasses:orientation", (e) => {
+      this.deviceDeg = e.detail.deg;
+      this.updateLand();
+    });
     this.root = document.getElementById("editor");
     this.photo = document.getElementById("ed-photo");
     this.preview = document.getElementById("ed-preview");
@@ -74,6 +78,7 @@ export class Editor {
     this.ready = false;
     this.root.hidden = false;
     this.root.classList.remove("is-full");
+    this.updateLand();
     document.getElementById("ed-name").textContent = item.name || "";
     // 撮った日時: 2024年7月18日 14:07（普通の写真アプリと同じ書き方）
     const dt = item.dateTaken ? new Date(item.dateTaken) : null;
@@ -136,7 +141,8 @@ export class Editor {
   }
 
   resize() {
-    const r = this.photo.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 3);
+    // 回したとき（全画面の横）も、回す前の大きさで描く（getBoundingClientRect は回したあとの外枠を返すので使わない）
+    const r = { width: this.photo.clientWidth, height: this.photo.clientHeight }, dpr = Math.min(window.devicePixelRatio || 1, 3);
     const w = Math.max(1, Math.round(r.width * dpr)), hgt = Math.max(1, Math.round(r.height * dpr));
     this.photo.style.setProperty("--pw", r.width + "px");
     this.photo.style.setProperty("--ph", r.height + "px");
@@ -209,6 +215,14 @@ export class Editor {
   gestures() {
     const el = this.photo, pts = new Map();
     let start = null, pinch = null, longTimer = 0, comparing = false, moved = false, lastTap = { t: 0, x: 0, y: 0 };
+    // 全画面の横で入れ物を回しているときは、指の位置を回す前の向きに戻して読む
+    const P = (e) => {
+      const a = this.landDeg || 0;
+      if (!a) return { x: e.clientX, y: e.clientY };
+      const r = el.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const t = (-a * Math.PI) / 180, dx = e.clientX - cx, dy = e.clientY - cy;
+      return { x: cx + dx * Math.cos(t) - dy * Math.sin(t), y: cy + dx * Math.sin(t) + dy * Math.cos(t) };
+    };
     const mid = () => {
       const a = [...pts.values()];
       return { x: (a[0].x + a[1].x) / 2, y: (a[0].y + a[1].y) / 2, d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1 };
@@ -216,9 +230,9 @@ export class Editor {
     el.addEventListener("pointerdown", (e) => {
       if (!this.ready) return;
       el.setPointerCapture(e.pointerId);
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      pts.set(e.pointerId, { x: P(e).x, y: P(e).y });
       if (pts.size === 1) {
-        start = { x: e.clientX, y: e.clientY, t: performance.now(), view: { ...this.engine.view }, crop: { ...this.params.crop } };
+        start = { x: P(e).x, y: P(e).y, t: performance.now(), view: { ...this.engine.view }, crop: { ...this.params.crop } };
         moved = false;
         if (this.group !== "crop") {
           longTimer = setTimeout(() => {
@@ -238,9 +252,9 @@ export class Editor {
     el.addEventListener("pointermove", (e) => {
       if (!pts.has(e.pointerId)) return;
       const prev = pts.get(e.pointerId);
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      pts.set(e.pointerId, { x: P(e).x, y: P(e).y });
       if (!start) return;
-      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) {
+      if (Math.hypot(P(e).x - start.x, P(e).y - start.y) > 8) {
         moved = true;
         clearTimeout(longTimer);
       }
@@ -262,7 +276,7 @@ export class Editor {
         return;
       }
       if (pts.size !== 1 || !moved || comparing) return;
-      const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+      const dx = P(e).x - prev.x, dy = P(e).y - prev.y;
       if (this.group === "crop") {
         this.setParam("crop", panCrop(this.params.crop, dx, dy, l.VW / dpr / (this.params.crop.w * W), W, H));
       } else if (this.engine.view.zoom > 1.001) {
@@ -284,11 +298,11 @@ export class Editor {
       if (this.group === "crop" && moved) this.commit();
       const now = performance.now();
       if (!moved && start && now - start.t < 260) {
-        if (now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40) {
+        if (now - lastTap.t < 320 && Math.hypot(P(e).x - lastTap.x, P(e).y - lastTap.y) < 40) {
           lastTap.t = 0;
           this.toggleFull();
         } else {
-          lastTap = { t: now, x: e.clientX, y: e.clientY };
+          lastTap = { t: now, x: P(e).x, y: P(e).y };
         }
       }
       start = null;
@@ -300,6 +314,15 @@ export class Editor {
   toggleFull() {
     this.root.classList.toggle("is-full");
     bridge.haptic("tick");
+    this.updateLand();
+  }
+
+  // 全画面のときに端末を横にしたら、写真の入れ物ごと回して、横長の写真を画面いっぱいに見せる（アプリは縦で固定）
+  updateLand() {
+    const d = this.deviceDeg || 0, land = this.isFull() && (d === 90 || d === 270);
+    this.landDeg = land ? (d === 90 ? -90 : 90) : 0;
+    this.root.classList.toggle("is-land", land);
+    this.photo.style.setProperty("--land-rot", this.landDeg + "deg");
   }
   isFull() {
     return this.root.classList.contains("is-full");

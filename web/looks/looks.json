@@ -20,7 +20,7 @@
    ],
    "lift": 6.541,
    "halation": 0.212,
-   "bloom": 0.0,
+   "bloom": 1.0,
    "bloomWarm": 1.0,
    "soften": 0.5,
    "grain": 3.0,
