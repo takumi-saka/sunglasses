@@ -5,7 +5,7 @@ import { Camera } from "./camera.js";
 import { Editor } from "./editor.js";
 import { Library } from "./library.js";
 import { pref } from "./store.js";
-import { h, toast } from "./ui.js";
+import { closeSheet, h, toast } from "./ui.js";
 
 const META = document.querySelector('meta[name="sg-version"]').content;
 const VERSION = META.startsWith("__") ? "開発中" : META;
@@ -67,8 +67,16 @@ async function boot() {
   }
 
   // スマホの戻る操作（APK から呼ばれる）。true を返すと、ページの中で受け止めたことになる
+  // Android の「戻る」（画面の端から内へなぞる・戻るボタン）。true を返すとアプリを閉じない
   window.__sunglassesBack = () => {
     if (screen === "editor") return editor.back();
+    // 下から出る板が開いていれば、まず閉じる
+    if (closeSheet()) return true;
+    // 一覧で写真を選んでいる途中なら、選ぶのをやめる（普通のアプリと同じ）
+    if (screen === "library" && library.selecting) {
+      library.endSelect();
+      return true;
+    }
     if (screen === "camera") {
       showLibrary();
       return true;

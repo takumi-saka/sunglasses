@@ -44,8 +44,11 @@ await shot("01_一覧");
   await page.locator(".tile").nth(0).dispatchEvent("contextmenu");
   await page.waitForTimeout(200);
   log.push(["長押しの合図で選ぶ", await page.locator("#lib-sel-count").textContent()]);
-  await page.click("#lib-sel-cancel");
+  // Android の「戻る」で、選ぶのをやめる（アプリは閉じない）
+  const handled = await page.evaluate(() => window.__sunglassesBack());
   await page.waitForTimeout(200);
+  log.push(["選んでいる途中の戻る", { 受け取った: handled, 選ぶ形: await page.evaluate(() => document.getElementById("library").classList.contains("is-selecting")), 下の行: await page.evaluate(() => document.getElementById("lib-select").hidden ? "隠れた" : "出ている") }]);
+  log.push(["選んでいないときの戻る", await page.evaluate(() => window.__sunglassesBack())]);
 }
 
 // 写真を開く
