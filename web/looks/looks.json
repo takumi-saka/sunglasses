@@ -30,6 +30,34 @@
    "vignette": 0.0
   },
   {
+   "id": "deepblue",
+   "name": "Aftersun Blue",
+   "desc": "Aftersun の「濃い青」の型（12・67・65 番のコマ）。空を深い青緑寄りの青に寄せ、灰色にオリーブを乗せない。Sun Level 100 が核そのもの（sunGain 1）なので、白み（bloom）は 0.6 にして白を飛ばさない（2026-11-10、型のフィルム）",
+   "file": "deepblue.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": 5.0,
+   "halation": 0.212,
+   "bloom": 0.6,
+   "bloomWarm": 1.0,
+   "soften": 0.5,
+   "grain": 3.0,
+   "grainSize": 25.0,
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0,
+   "sunGain": 1.0
+  },
+  {
    "id": "aftersun",
    "name": "Aftersun+",
    "desc": "最初の Aftersun（青緑を足した形）",

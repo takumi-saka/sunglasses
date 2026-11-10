@@ -1,7 +1,7 @@
 // 編集の画面（2026-11-05）。
 // 写真の上: 押している間は元の画、2 回たたくと全画面、2 本指でつまむと拡大、拡大中は 1 本指で動かす。
 // 下の板: 核の箱・つまみ（よく使う／明るさ／色／色ごと／グレーディング／効果／細部／切り抜き）。
-import { defaultParams, SUN_CORE } from "../engine/engine.js";
+import { defaultParams, sunCoreOf, sunGainOf } from "../engine/engine.js";
 import * as bridge from "./bridge.js";
 import { cropForAspect, panCrop, rotateCrop, zoomCrop } from "./crop.js";
 import { curveEditor } from "./curve.js";
@@ -9,7 +9,7 @@ import { ASPECTS, GRADE_ZONES, GROUPS, HSL_COLORS, HSL_NAMES, KNOBS, changed } f
 import { deleteEdit, getEdit, pref, setEdit } from "./store.js";
 import { closeSheet, h, sheet, slider, toast } from "./ui.js";
 
-const CORE_BANDS = { aftersun2: ["#9a9a6e", "#d9c7a4"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
+const CORE_BANDS = { aftersun2: ["#9a9a6e", "#d9c7a4"], deepblue: ["#1d6f8c", "#d9c7a4"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
 const AUTO_CORE = "aftersun2"; // 昼の写真はいまは Aftersun（逆算の形）。夜の核ができたら、夜の写真は夜の核を選ぶ
 const FLIP_DEG = { 3: 180, 5: -90, 6: 90 };
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -478,9 +478,11 @@ export class Editor {
     });
     const row = h("div", { class: "cores" }, boxes);
     requestAnimationFrame(() => this.drawCoreThumbs(row));
-    const name = this.engine.coreById(this.params.core).name;
-    const note = h("p", { class: "note" }, `Sun Level は、0 で素の画、${SUN_CORE} で ${name} そのまま、100 でその 1.5 倍。${SUN_CORE} で軽く止まります。`);
-    return [row, this.knob("sunLevel", { snaps: [SUN_CORE] }), note];
+    const core = this.engine.coreById(this.params.core), name = core.name, sc = sunCoreOf(core);
+    // 2026-11-10 核ごとの強さ。型のフィルムは 100 が核そのもの（止まる所なし）
+    const note = h("p", { class: "note" }, sc >= 100 ? `Sun Level は、0 で素の画、100 で ${name} そのまま。`
+      : `Sun Level は、0 で素の画、${sc} で ${name} そのまま、100 でその ${sunGainOf(core)} 倍。${sc} で軽く止まります。`);
+    return [row, this.knob("sunLevel", { snaps: sc < 100 ? [sc] : [] }), note];
   }
 
   // 核の箱の中に、いまの写真をその核で描いた小さな画を出す

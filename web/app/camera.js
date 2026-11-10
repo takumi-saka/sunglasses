@@ -12,7 +12,7 @@
 //   S・ISO・ピントは、アプリを開き直すと自動に戻す（覚えない）。WB と AF は覚える。
 // 撮った写真は、撮ったときのルック・Sun Level・明るさのまま編集で開く（写真ごとの直しの記録に入れておく）。
 import * as C from "../engine/color.js";
-import { defaultParams, SUN_CORE } from "../engine/engine.js";
+import { defaultParams, sunCoreOf } from "../engine/engine.js";
 import * as bridge from "./bridge.js";
 import { pref, setEdit } from "./store.js";
 import { h, ring, toast } from "./ui.js";
@@ -28,8 +28,9 @@ const SETTINGS = {
 const log2 = (x) => Math.log(x) / Math.LN2;
 const onOff = (b) => (b ? "オン" : "オフ");
 // 右下のルックで、たたくたびに替わる順（2026-11-06）。名前は looks.json の核の名前を使う
-const FAMILIES = ["aftersun2", "aftersun", "mine"];
-const FAMILY_NAMES = { aftersun2: "Aftersun", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
+// 2026-11-10 型のフィルム（deepblue＝Aftersun Blue）を Aftersun の次に足した
+const FAMILIES = ["aftersun2", "deepblue", "aftersun", "mine"];
+const FAMILY_NAMES = { aftersun2: "Aftersun", deepblue: "Aftersun Blue", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
 
 // シャッター速度と ISO の 1/3 段の目盛り（端末が出せる範囲だけを使う）。手応えは 1 段ごと
 const S_STOPS = [1 / 8000, 1 / 6400, 1 / 5000, 1 / 4000, 1 / 3200, 1 / 2500, 1 / 2000, 1 / 1600, 1 / 1250, 1 / 1000, 1 / 800, 1 / 640, 1 / 500, 1 / 400, 1 / 320, 1 / 250, 1 / 200, 1 / 160,
@@ -685,10 +686,11 @@ export class Camera {
       this.evRing.setReadonly(full);
       this.showEv(this.expo.display);
       const lvStops = [];
-      // 67 は核そのもの（100 はその 1.5 倍）。印を付けて、軽く止まる
-      for (let v = 0; v <= 100; v++) lvStops.push({ v, mark: v % 50 === 0 || v === SUN_CORE ? "major" : v % 10 === 0 ? "minor" : null, label: v % 50 === 0 ? String(v) : null, gap: 3.4 });
+      // 核そのものの所（多くの核は 67。100 はその 1.5 倍）に印を付けて、軽く止まる。型のフィルムは 100 が核そのもの（2026-11-10）
+      const sc = sunCoreOf(this.engine.cores ? this.engine.coreById(this.family) : null);
+      for (let v = 0; v <= 100; v++) lvStops.push({ v, mark: v % 50 === 0 || v === sc ? "major" : v % 10 === 0 ? "minor" : null, label: v % 50 === 0 ? String(v) : null, gap: 3.4 });
       const lv = ring({
-        label: "", extra: h("span", { class: "cam-dial-extra" }, tabs("sun")), stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: [SUN_CORE],
+        label: "", extra: h("span", { class: "cam-dial-extra" }, tabs("sun")), stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: sc < 100 ? [sc] : [],
         onInput: (v) => {
           this.sunLevel = v;
           pref("cameraSunLevel", v);

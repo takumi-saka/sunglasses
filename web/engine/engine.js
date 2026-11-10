@@ -14,6 +14,10 @@ const zone = () => ({ hue: 0, sat: 0, lum: 0 });
 // Sun Level 100 のときの強さ（核そのものの何倍か）。67 で核そのもの
 export const SUN_GAIN = 1.5;
 export const SUN_CORE = Math.round(100 / SUN_GAIN);
+// 2026-11-10 核ごとの強さ（looks.json の sunGain）。型のフィルム（Aftersun Blue など）は 1 で、100 が型の画そのもの
+// （お手本のコマに合わせて作ったので、1.5 倍に伸ばすと濃くなりすぎ、色の付いた所で色が反対に転ぶため）。書いていない核は SUN_GAIN
+export const sunGainOf = (core) => (core && core.sunGain) || SUN_GAIN;
+export const sunCoreOf = (core) => Math.round(100 / sunGainOf(core));
 
 export function defaultParams() {
   return {
@@ -147,7 +151,7 @@ export class Engine {
   // 核より強い所は、素の画から離れる向きに伸ばす（素の画の重みがマイナスになる）。色だけを伸ばし、粒や白みは核の量まで。
   // Aftersun+（id aftersun、最初の形）は、強さ 0.5 で弱めの核を挟む。ほかの核は、素の画からその核へなめらかに混ぜる
   lookFor(p) {
-    const s = C.clamp((p.sunLevel ?? p.strength ?? 100) / 100, 0, 1) * SUN_GAIN;
+    const s = C.clamp((p.sunLevel ?? p.strength ?? 100) / 100, 0, 1) * sunGainOf(this.coreById(p.core));
     if (p.core !== "aftersun") return { A: this.coreById(p.core), wA: s, B: null, wB: 0, wN: 1 - s };
     const A = this.coreById("weak"), B = this.coreById("aftersun");
     if (s <= 0.5) return { A, wA: 2 * s, B, wB: 0, wN: 1 - 2 * s };
