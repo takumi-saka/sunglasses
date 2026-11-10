@@ -32,7 +32,8 @@ const onOff = (b) => (b ? "オン" : "オフ");
 // 2026-11-10 夜 aftersun3（Aftersun のコマを測った数に合わせた形）を足し、名前を Aftersun にした。前の Aftersun（aftersun2）は「Aftersun（前の版）」
 // 2026-11-10 夜 cinema（映画の見た目の核。Chromagraph Camera の作例を測った形）を足して、主のルックにした。
 // cinema では、Sun Level の輪は「Aftersun をどれだけ足すか」になる（0 でシネマそのまま。値はほかのルックと別に覚える）
-const FAMILIES = ["cinema", "aftersun2", "aftersun3", "deepblue", "aqua", "aftersun", "mine"];
+// 並びは、Cinema → 新しい Aftersun の 3 つ → 前からのルック（一覧に出る順）
+const FAMILIES = ["cinema", "aftersun3", "deepblue", "aqua", "aftersun2", "aftersun", "mine"];
 const SUN_MIX = ["cinema"]; // looks.json の sunInto がある核（looks.json を読む前に使う控え）
 const FAMILY_NAMES = { cinema: "Cinema", aftersun2: "Aftersun（前の版）", aftersun3: "Aftersun", deepblue: "Aftersun Blue", aqua: "Aftersun Aqua", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
 
@@ -115,7 +116,7 @@ export class Camera {
     this.els = {
       frame: $("cam-frame"), grid: $("cam-grid"), level: $("cam-level"), ring: $("cam-ring"), badge: $("cam-badge"),
       count: $("cam-count"), readout: $("cam-readout"), hist: $("cam-hist"), thumb: $("cam-thumb"), shutter: $("cam-shutter"),
-      coreBtn: $("cam-core"), ev: $("cam-ev"), pro: $("cam-pro"), lenses: $("cam-lenses"), msg: $("cam-msg"), bubble: $("cam-bubble"),
+      coreBtn: $("cam-core"), looks: $("cam-looks"), ev: $("cam-ev"), pro: $("cam-pro"), lenses: $("cam-lenses"), msg: $("cam-msg"), bubble: $("cam-bubble"),
     };
     $("cam-back").onclick = () => this.onBack();
     for (const key of Object.keys(SETTINGS)) this.wheel($("cam-set-" + (key === "autoJpeg" ? "jpeg" : key)), key);
@@ -127,7 +128,7 @@ export class Camera {
     this.renderSettings();
   }
 
-  // 右下のルック: たたくと次のルック、長押ししている間だけ、ルックをかけない素の画
+  // 右下のルック: たたくとルックの一覧が出る（名前をたたいて選ぶ）、長押ししている間だけ、ルックをかけない素の画
   lookButton() {
     const btn = this.els.coreBtn;
     let timer = 0, holding = false;
@@ -148,12 +149,33 @@ export class Camera {
       if (holding) {
         holding = false;
         raw(false);
-      } else if (tap) this.nextFamily();
+      } else if (tap) this.toggleLooks();
     };
     btn.addEventListener("pointerup", () => up(true));
     btn.addEventListener("pointercancel", () => up(false));
     btn.addEventListener("pointerleave", () => holding && up(false));
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    // 一覧の外（写真の上）をたたいたら閉じる。写真をたたく操作（ピント・明るさ）には流さない
+    const looks = this.els.looks;
+    for (const t of ["pointerdown", "pointermove", "pointerup"]) looks.addEventListener(t, (e) => e.stopPropagation());
+    looks.addEventListener("click", (e) => e.target === looks && this.toggleLooks(false));
+  }
+
+  familyName(id) {
+    return (this.engine.cores && this.engine.cores.find((c) => c.id === id) || {}).name || FAMILY_NAMES[id];
+  }
+
+  // ルックの一覧（写真の上に、選ぶ間だけ出す）。いまのルックに印
+  toggleLooks(open = this.els.looks.hidden) {
+    const el = this.els.looks;
+    if (!open) {
+      el.hidden = true;
+      return;
+    }
+    el.replaceChildren(h("div", { class: "cam-looks-list" }, h("small", {}, "ルック"),
+      ...FAMILIES.map((id) => h("button", { class: "cam-look" + (id === this.family ? " is-on" : ""), onClick: () => this.setFamily(id) }, this.familyName(id)))));
+    el.hidden = false;
+    bridge.haptic("tick");
   }
 
   // 上の設定: 値の所を上下になぞると、ダイヤルを回すように値が送られる（1 つ進むごとに軽い手応え）。たたくと次の値
@@ -213,7 +235,8 @@ export class Camera {
     }
     this.els.frame.dataset.frame = s.frame;
     this.els.grid.hidden = s.frame !== "thirds";
-    const name = (this.engine.cores && this.engine.cores.find((c) => c.id === this.family) || {}).name || FAMILY_NAMES[this.family];
+    const name = this.familyName(this.family);
+    this.els.coreBtn.classList.toggle("is-long", name.length > 12); // 長い名前は字を小さくして、シャッターに寄らないようにする
     this.els.coreBtn.replaceChildren(h("small", {}, "ルック"), h("b", {}, name), h("span", { class: "cam-core-hint" }, "長押しで元の画"));
   }
 
@@ -257,6 +280,7 @@ export class Camera {
 
   close() {
     this.active = false;
+    this.toggleLooks(false);
     this.root.hidden = true;
     document.documentElement.classList.remove("is-camera");
     bridge.cameraCall("cameraClose");
@@ -379,8 +403,10 @@ export class Camera {
     this.bubbleTimer = setTimeout(() => b.classList.remove("is-on"), ms);
   }
 
-  async nextFamily() {
-    this.family = FAMILIES[(FAMILIES.indexOf(this.family) + 1) % FAMILIES.length];
+  async setFamily(id) {
+    this.toggleLooks(false);
+    if (id === this.family || !FAMILIES.includes(id)) return;
+    this.family = id;
     pref("cameraFamily", this.family);
     this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
     bridge.haptic("tick");
@@ -913,6 +939,7 @@ export class Camera {
   // ---------- 撮る ----------
   async shoot() {
     if (!this.active || this.busy || !this.opened) return;
+    this.toggleLooks(false);
     this.busy = true;
     for (let i = this.settings.timer; i > 0; i--) {
       this.els.badge.hidden = false;

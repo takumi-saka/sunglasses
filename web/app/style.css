@@ -118,6 +118,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .core-chip { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
 .core-chip small { font-size: 11px; color: var(--sub); }
 .core-chip b { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+.core-chip .plus { font-size: 13px; font-weight: 600; color: var(--accent); }
 .core-chip .auto { font-size: 11px; font-weight: 700; letter-spacing: .06em; padding: 2px 9px; border-radius: 999px; background: var(--accent); color: #000; }
 .ed-hint { flex: 1; min-width: 0; font-size: 11px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .3s; }
 .ed-hint.is-on { opacity: 1; }
@@ -302,6 +303,15 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-core b { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
 .cam-core-hint { margin-top: 4px; font-size: 11px; color: var(--sub); }
 .cam-core.is-raw b { color: var(--accent); }
+.cam-core.is-long b { font-size: 12.5px; letter-spacing: 0; }
+/* ルックの一覧: ルックのボタンをたたいたときだけ、写真の上に出す。端末の向きに合わせて回す */
+.cam-looks { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; background: rgba(0,0,0,.35); }
+.cam-looks[hidden] { display: none; }
+.cam-looks-list { display: flex; flex-direction: column; min-width: 224px; padding: 12px 8px 8px; border-radius: 16px; background: rgba(8,8,8,.86); transform: rotate(var(--rot, 0deg)); transition: transform .25s; }
+.cam-looks-list small { padding: 0 14px 6px; font-size: 11px; color: var(--sub); }
+.cam-look { min-height: 44px; padding: 0 14px; border-radius: 10px; font-size: 16px; font-weight: 600; letter-spacing: .02em; color: var(--ink); text-align: left; white-space: nowrap; }
+.cam-look.is-on { color: var(--accent); background: rgba(240,162,60,.12); }
+.cam-look:active { background: rgba(255,255,255,.08); }
 .rot { transition: transform .25s; transform: rotate(var(--rot, 0deg)); }
 /* 撮る画面の知らせ（AE/AFロック・手ぶれ・タイマー）も、端末の向きに合わせて回す */
 #cam-badge { transform: translateX(-50%) rotate(var(--rot, 0deg)); transition: transform .25s; }

@@ -92,33 +92,6 @@
    "sunGain": 1.0
   },
   {
-   "id": "aftersun2",
-   "name": "Aftersun（前の版）",
-   "desc": "映画の色に一番近い核（Aftersun を普通の写真に戻した差から作った形、2026-11-06）",
-   "file": "aftersun2.bin",
-   "size": 65,
-   "lo": [
-    0.0,
-    0.0,
-    0.0
-   ],
-   "hi": [
-    1.0,
-    1.0,
-    1.0
-   ],
-   "lift": 6.541,
-   "halation": 0.212,
-   "bloom": 1.0,
-   "bloomWarm": 1.0,
-   "soften": 0.5,
-   "grain": 3.0,
-   "grainSize": 25.0,
-   "texture": 0.0,
-   "clarity": 0.0,
-   "vignette": 0.0
-  },
-  {
    "id": "aftersun3",
    "name": "Aftersun",
    "desc": "Aftersun のコマ 21 枚を測った数に合わせた形（2026-11-10）。画の明るさは Aftersun と同じ、白は低くクリーム色でなだらかに止める、明暗をやわらかく、色の薄い所に緑がかったオリーブを乗せる（肌にはかけない）、空は Aftersun Blue と同じ深い青。質感の部品は Aftersun Blue と同じ。Sun Level 100 が核そのもの（sunGain 1）",
@@ -365,6 +338,33 @@
    "clarity": 0.0,
    "vignette": 0.0,
    "sunGain": 1.0
+  },
+  {
+   "id": "aftersun2",
+   "name": "Aftersun（前の版）",
+   "desc": "映画の色に一番近い核（Aftersun を普通の写真に戻した差から作った形、2026-11-06）",
+   "file": "aftersun2.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": 6.541,
+   "halation": 0.212,
+   "bloom": 1.0,
+   "bloomWarm": 1.0,
+   "soften": 0.5,
+   "grain": 3.0,
+   "grainSize": 25.0,
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0
   },
   {
    "id": "aftersun",

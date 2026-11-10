@@ -403,7 +403,9 @@ export class Editor {
   // ---------- 下の板 ----------
   groupChanged(g) {
     const p = this.params;
-    if (g.knobs) return g.knobs.some((k) => changed(p, k)) || (g.curve && (Object.values(p.curve).some((c) => c && c.length) || Object.values(p.param).some((v) => v))) || (g.bw && p.bw);
+    // 「よく使う」には、ルックの強さのつまみ（Cinema では Aftersun）も置いてある
+    const sunMoved = g.id === "basic" && (p.sunLevel ?? sunDefaultOf(this.engine.coreById(p.core))) !== sunDefaultOf(this.engine.coreById(p.core));
+    if (g.knobs) return sunMoved || g.knobs.some((k) => changed(p, k)) || (g.curve && (Object.values(p.curve).some((c) => c && c.length) || Object.values(p.param).some((v) => v))) || (g.bw && p.bw);
     if (g.id === "core") return p.core !== AUTO_CORE || (p.sunLevel ?? AUTO.sunLevel) !== AUTO.sunLevel;
     if (g.id === "mix") return ["hue", "sat", "lum"].some((k) => p.hsl[k].some((v) => v));
     if (g.id === "grade") return p.grading.balance !== 0 || GRADE_ZONES.some(([z]) => p.grading[z].sat || p.grading[z].lum);
@@ -417,10 +419,15 @@ export class Editor {
       onClick: () => this.showGroup(g.id),
     }, g.name)));
     const core = this.engine.coreById(this.params ? this.params.core : AUTO_CORE);
-    this.coreChip.replaceChildren(h("small", {}, "ルック"), h("b", {}, core.name), this.params && this.params.core === AUTO_CORE ? h("span", { class: "auto" }, "自動") : "");
+    // 上のルック名: Cinema に Aftersun を足しているときは、足した量も出す（例: Cinema ＋ Aftersun 40）。「自動」は、何も選んでいないときだけ
+    const p = this.params;
+    const sun = p && isSunMix(core) ? Math.round(p.sunLevel ?? sunDefaultOf(core)) : 0;
+    const auto = p && p.core === AUTO_CORE && sun === AUTO.sunLevel;
+    this.coreChip.replaceChildren(h("small", {}, "ルック"), h("b", {}, core.name), sun > 0 ? h("span", { class: "plus" }, `＋ Aftersun ${sun}`) : "", auto ? h("span", { class: "auto" }, "自動") : "");
   }
 
   showGroup(id) {
+    if (id === "core" && this.group !== "core") this.coreScroll = undefined; // ルックのタブに入り直したら、選んでいるルックが見える位置から
     this.group = id;
     pref("group", id);
     this.root.classList.toggle("is-crop", id === "crop");
@@ -444,6 +451,7 @@ export class Editor {
     const g = GROUPS.find((x) => x.id === this.group) || GROUPS[1];
     const body = [];
     if (g.id === "core") body.push(...this.corePanel());
+    if (g.id === "basic") body.push(this.sunKnob()); // よく使うの一番上に、ルックの強さ（Cinema では Aftersun を足す量）
     if (g.knobs) body.push(...g.knobs.map((k) => this.knob(k)));
     if (g.curve) body.push(...this.curvePanel());
     if (g.bw) {
@@ -481,17 +489,30 @@ export class Editor {
       return box;
     });
     const row = h("div", { class: "cores" }, boxes);
-    requestAnimationFrame(() => this.drawCoreThumbs(row));
+    // ルックを選び直しても、横の並びの位置は動かさない。タブに入った直後は、選んでいるルックを真ん中に出す
+    row.addEventListener("scroll", () => (this.coreScroll = row.scrollLeft), { passive: true });
+    requestAnimationFrame(() => {
+      const on = row.querySelector(".is-on");
+      if (this.coreScroll !== undefined) row.scrollLeft = this.coreScroll;
+      else if (on) row.scrollLeft = Math.max(0, on.getBoundingClientRect().left - row.getBoundingClientRect().left + row.scrollLeft - (row.clientWidth - on.offsetWidth) / 2);
+      this.drawCoreThumbs(row);
+    });
     const core = this.engine.coreById(this.params.core), name = core.name, sc = sunCoreOf(core);
     // 2026-11-10 核ごとの強さ。型のフィルムは 100 が核そのもの（止まる所なし）
     if (isSunMix(core)) {
       // Cinema: つまみは「Aftersun をどれだけ足すか」
       const mixNote = h("p", { class: "note" }, `Aftersun は、0 で ${name} そのまま。上げるほど、空が深い青に、色が濃くなります（映画 Aftersun の色）。`);
-      return [row, this.knob("sunLevel", { label: "Aftersun", def: sunDefaultOf(core) }), mixNote];
+      return [row, this.sunKnob(), mixNote];
     }
     const note = h("p", { class: "note" }, sc >= 100 ? `Sun Level は、0 で素の画、100 で ${name} そのまま。`
       : `Sun Level は、0 で素の画、${sc} で ${name} そのまま、100 でその ${sunGainOf(core)} 倍。${sc} で軽く止まります。`);
-    return [row, this.knob("sunLevel", { snaps: sc < 100 ? [sc] : [] }), note];
+    return [row, this.sunKnob(), note];
+  }
+
+  // ルックの強さのつまみ。Cinema では「Aftersun をどれだけ足すか」（0 がはじめの値）、ほかのルックでは Sun Level
+  sunKnob() {
+    const core = this.engine.coreById(this.params.core), sc = sunCoreOf(core);
+    return isSunMix(core) ? this.knob("sunLevel", { label: "Aftersun", def: sunDefaultOf(core) }) : this.knob("sunLevel", { snaps: sc < 100 ? [sc] : [] });
   }
 
   // 核の箱の中に、いまの写真をその核で描いた小さな画を出す

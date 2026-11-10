@@ -228,7 +228,7 @@ log.撮った写真の記録 = await page.evaluate(() => new Promise((resolve) =
     g.onsuccess = () => resolve(g.result ? { core: g.result.params.core, sunLevel: g.result.params.sunLevel, exposure: g.result.params.exposure } : null);
   };
 }));
-// ルックの長押しで元の画、たたくと次のルック
+// ルックの長押しで元の画、たたくと一覧が出て、名前をたたくとそのルックになる
 const cb = await page.locator("#cam-core").boundingBox();
 await clear();
 await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
@@ -239,9 +239,31 @@ await page.mouse.up();
 await page.waitForTimeout(200);
 log.離したあとの重み = (await calls("w")).slice(-1);
 await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+await page.waitForTimeout(300);
+log.ルックの一覧 = { 出ている: !(await page.locator("#cam-looks").evaluate((el) => el.hidden)), 並び: await page.locator(".cam-look").allTextContents(), 印: await page.locator(".cam-look.is-on").allTextContents() };
+await shot("c7a_ルックの一覧");
+// 一覧の外（写真の上）をたたくと閉じる。ピント合わせには流れない
+await clear();
+await page.mouse.click(60, 200);
+await page.waitForTimeout(300);
+log.外をたたいた = { 一覧は閉じた: await page.locator("#cam-looks").evaluate((el) => el.hidden), ルック: await page.locator("#cam-core b").textContent(), ピントの呼び出し: (await calls("focus")).length };
+// もう一度出して、4 番目（名前が長いルック）を選ぶ
+await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+await page.waitForTimeout(300);
+await page.locator(".cam-look >> nth=3").click();
 await page.waitForTimeout(600);
-log.たたいたあとのルック = await page.locator("#cam-core b").textContent();
+log.選んだあとのルック = { 名前: await page.locator("#cam-core b").textContent(), 一覧は閉じた: await page.locator("#cam-looks").evaluate((el) => el.hidden), 長い名前の印: await page.locator("#cam-core").evaluate((el) => el.classList.contains("is-long")), 重み: (await calls("w")).slice(-1) };
+const cb2 = await page.locator("#cam-core").boundingBox(), sb = await page.locator("#cam-shutter").boundingBox();
+log.ルック名とシャッターのすき間 = Math.round(cb2.x - (sb.x + sb.width));
 await shot("c7_あと");
+// 横に倒したときの一覧
+await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 90 } })));
+await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+await page.waitForTimeout(500);
+await shot("c7b_横の一覧");
+await page.mouse.click(60, 200);
+await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 0 } })));
+await page.waitForTimeout(300);
 // 横に倒したとき: 字の出る所が回り、回している値が吹き出しに出る
 await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 90 } })));
 await page.waitForTimeout(400);
