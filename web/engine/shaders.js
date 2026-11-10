@@ -319,6 +319,10 @@ uniform int uGrainOn;
 uniform float uGrainAmp;
 uniform float uVignette;
 uniform mat3 uToCrop;
+// 2026-11-10 明るさごとの粒の量の表（明るさ 0〜1 を 32 等分した 33 点。looks.json の grainCurve から作る）。
+// uGrainCurveOn が 0 のときは今までの式 clamp(1.15 − l^1.5, 0.2, 1) のまま
+uniform int uGrainCurveOn;
+uniform float uGrainCurve[33];
 void main() {
   vec3 lab = texture(uLab, vUv).xyz;
   float L = lab.x;
@@ -329,7 +333,13 @@ void main() {
   }
   if (uGrainOn == 1) {
     float l = clamp(L, 0.0, 100.0) / 100.0;
-    L += uGrainAmp * texture(uNoise, vUv).r * clamp(1.15 - pow(l, 1.5), 0.2, 1.0);
+    float m = clamp(1.15 - pow(l, 1.5), 0.2, 1.0);
+    if (uGrainCurveOn == 1) {
+      float x = l * 32.0;
+      int i = int(min(floor(x), 31.0));
+      m = mix(uGrainCurve[i], uGrainCurve[i + 1], x - float(i));
+    }
+    L += uGrainAmp * texture(uNoise, vUv).r * m;
   }
   o = vec4(lab2rgb(vec3(clamp(L, 0.0, 100.0), lab.yz)), 1.0);
 }`);
@@ -348,9 +358,17 @@ uniform sampler2D uRgb;
 uniform sampler2D uGlow;
 uniform float uAmt;
 uniform int uOn;
+// 2026-11-10 縁だけのにじみ（looks.json の halationEdge がある核だけ 1）。足す量を「ぼかした光源 − その場の光源」の正の分にする。
+// 大きな明るい面の内側では、ぼかした光源がその場の光源とほぼ同じなので、ほとんど足さない（白い空や壁が桃色にならないため）。
+// 明るい所の外側（その場の光源が 0）には、今までと同じだけ赤く広がる。0 のときは今までの式のまま
+uniform int uEdge;
 void main() {
   vec3 c = texture(uRgb, vUv).rgb;
-  if (uOn == 1) c += texture(uGlow, vUv).r * uAmt * vec3(1.0, 0.30, 0.10);
+  if (uOn == 1) {
+    float g = texture(uGlow, vUv).r;
+    if (uEdge == 1) g = max(g - max(max(c.r, max(c.g, c.b)) - 0.6, 0.0), 0.0);
+    c += g * uAmt * vec3(1.0, 0.30, 0.10);
+  }
   o = vec4(c, 1.0);
 }`);
 export const FS_BLOOM_SRC = fs(`

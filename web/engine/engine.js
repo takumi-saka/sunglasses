@@ -19,6 +19,32 @@ export const SUN_CORE = Math.round(100 / SUN_GAIN);
 export const sunGainOf = (core) => (core && core.sunGain) || SUN_GAIN;
 export const sunCoreOf = (core) => Math.round(100 / sunGainOf(core));
 
+// 2026-11-10 明るさの段ごとの粒の量（looks.json の grainCurve）。[[明るさ 0〜1, 倍率], …] の結び目を、
+// 結び目の間は直線でつなぎ、両端の外は端の値のまま。シェーダーには明るさ 0〜1 を 32 等分した 33 点の表で渡す。
+// 書いていない核は今までの式 clamp(1.15 − l^1.5, 0.2, 1)（暗いほど強く、明るい所にも 0.2 残る）。
+// Aftersun の粒は中間で一定、明るい所と真っ暗な所で消えるので（調査12 の E の 4-1）、核ごとに形を持てるようにした
+export const GRAIN_LUT_N = 33;
+export function grainCurveTable(knots) {
+  const t = new Float32Array(GRAIN_LUT_N);
+  for (let i = 0; i < GRAIN_LUT_N; i++) {
+    const l = i / (GRAIN_LUT_N - 1);
+    if (!knots || !knots.length) {
+      t[i] = C.clamp(1.15 - Math.pow(l, 1.5), 0.2, 1);
+      continue;
+    }
+    const last = knots.length - 1;
+    if (l <= knots[0][0]) t[i] = knots[0][1];
+    else if (l >= knots[last][0]) t[i] = knots[last][1];
+    else {
+      let j = 0;
+      while (knots[j + 1][0] < l) j++;
+      const [x0, y0] = knots[j], [x1, y1] = knots[j + 1];
+      t[i] = x1 > x0 ? y0 + ((y1 - y0) * (l - x0)) / (x1 - x0) : y1;
+    }
+  }
+  return t;
+}
+
 export function defaultParams() {
   return {
     core: "aftersun", sunLevel: 100,
@@ -137,7 +163,8 @@ export class Engine {
       gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGB16F, c.size, c.size, c.size, 0, gl.RGB, gl.HALF_FLOAT, half);
       for (const [p, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
         [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_3D, p, v);
-      return { ...c, tex, cpu: new C.CpuLut(c.size, c.lo, c.hi, C.halfToFloat(half)) };
+      // 2026-11-10 grainCurve がある核だけ、明るさごとの粒の表を先に作っておく（無い核は null で、今までの式のまま）
+      return { ...c, tex, cpu: new C.CpuLut(c.size, c.lo, c.hi, C.halfToFloat(half)), grainLut: c.grainCurve ? grainCurveTable(c.grainCurve) : null };
     }));
     this.curvesTex = this._curveTex([0, 1, 2, 3].map(() => C.pchip([])));
   }
@@ -163,10 +190,23 @@ export class Engine {
   // Sun Level で核より強くしたときも、これらは核の量で止める（色だけを伸ばす）
   _mixedCore(lk) {
     const tot = lk.wA + (lk.B ? lk.wB : 0), cap = tot > 1 ? 1 / tot : 1;
-    const raw = (k) => lk.wA * lk.A[k] + (lk.B ? lk.wB * lk.B[k] : 0);
+    // 2026-11-10 書いていない値は 0 として読む（colorNoise は新しい核にしか無いため）
+    const raw = (k) => lk.wA * (lk.A[k] || 0) + (lk.B ? lk.wB * (lk.B[k] || 0) : 0);
     const sum = (k) => raw(k) * cap;
     const w = tot || 1, avg = (k) => raw(k) / w;
-    return { soften: sum("soften"), grain: sum("grain"), grainSize: avg("grainSize"), halation: sum("halation"), bloom: sum("bloom"), bloomWarm: avg("bloomWarm") };
+    // 2026-11-10 明るさごとの粒の表は、形なので重みの割合で混ぜる（grainSize と同じ）。
+    // 混ぜる核のどれにも grainCurve が無ければ null にして、シェーダーは今までの式をそのまま使う（今の核の画を変えないため）
+    let grainLut = null;
+    const parts = [[lk.A, lk.wA], [lk.B, lk.B ? lk.wB : 0]].filter(([c, wt]) => c && wt > 0);
+    if (parts.some(([c]) => c.grainLut)) {
+      grainLut = new Float32Array(GRAIN_LUT_N);
+      const old = grainCurveTable(null), wsum = parts.reduce((a, [, wt]) => a + wt, 0);
+      for (const [c, wt] of parts) for (let i = 0; i < GRAIN_LUT_N; i++) grainLut[i] += ((c.grainLut || old)[i] * wt) / wsum;
+    }
+    return { soften: sum("soften"), grain: sum("grain"), grainSize: avg("grainSize"), halation: sum("halation"), bloom: sum("bloom"), bloomWarm: avg("bloomWarm"),
+      colorNoise: sum("colorNoise"), grainLut,
+      // 2026-11-10 縁だけのにじみ（halationEdge）は形なので、混ぜる核のどれかにあれば使う。無い核（今の核）は 0 で今までの式のまま
+      halationEdge: parts.some(([c]) => c.halationEdge) ? 1 : 0 };
   }
 
   _lookUniforms(lk, gain) {
@@ -357,7 +397,8 @@ export class Engine {
     const gl = this.gl, l = this.layout();
     if (!l) return;
     const zoomed = l.VW > l.rw || l.VH > l.rh;
-    const m = zoomed ? Math.min(512, Math.ceil(0.09 * l.VH)) : 0;
+    // 2026-11-10 白みのぼかし（σ = 長い辺の 0.0225）の 3 倍。前は 0.09 × 高さで、横長 4:3 ではこれと同じ
+    const m = zoomed ? Math.min(512, Math.ceil(0.0675 * Math.max(l.VW, l.VH))) : 0;
     const bx0 = Math.max(0, l.x0 - m), by0 = Math.max(0, l.y0 - m);
     const bw = Math.min(l.VW, l.x0 + l.rw + m) - bx0, bh = Math.min(l.VH, l.y0 + l.rh + m) - by0;
     const r = this._renderRegion(l.VW, l.VH, bx0, by0, bw, bh, { compare: this.compare });
@@ -404,9 +445,13 @@ export class Engine {
       cur = o;
     };
     if (!compare) {
-      if (P.noise > 0 || P.colorNoise > 0) {
+      // 2026-11-10 カラーノイズ軽減 = 核の値（looks.json の colorNoise、つまみと同じ 0〜100）＋ つまみ、を 0〜100 で止める。
+      // 核の値は、にじみなどと同じく Sun Level の重みで効き、素の画では 0。つまみは 0〜100 のまま（初期値 0 で核のまま、上げると足す）。
+      // 掛け算（核 ×（1 ＋ つまみ））にしないのは、つまみが 0 からしか動かず、核の値が 0 の核ではつまみが効かなくなるため
+      const chroma = C.clamp((core.colorNoise || 0) + P.colorNoise, 0, 100);
+      if (P.noise > 0 || chroma > 0) {
         const o = rt();
-        this._pass("nr", o, { uLab: cur, uTexel: [1 / bw, 1 / bh], uStep: Math.max(1, VW / 4096), uLuma: (P.noise / 100) * 6, uChroma: P.colorNoise / 100 });
+        this._pass("nr", o, { uLab: cur, uTexel: [1 / bw, 1 / bh], uStep: Math.max(1, VW / 4096), uLuma: (P.noise / 100) * 6, uChroma: chroma / 100 });
         swap(o);
       }
       const sc = VW / 512;
@@ -440,18 +485,24 @@ export class Engine {
       amp = ((grain / 100) * 10 * Math.min(1, Math.sqrt(VW / 2048))) / n.norm;
     }
     const rgb = rt();
-    this._pass("finish", rgb, { uLab: cur, uNoise: noise || cur, uGrainOn: noise ? 1 : 0, uGrainAmp: amp, uVignette: compare ? 0 : P.vignette, uToCrop: toCrop });
+    // 2026-11-10 明るさごとの粒の表（grainCurve のある核だけ。無ければ uGrainCurveOn 0 で今までの式）
+    this._pass("finish", rgb, { uLab: cur, uNoise: noise || cur, uGrainOn: noise ? 1 : 0, uGrainAmp: amp, uVignette: compare ? 0 : P.vignette, uToCrop: toCrop,
+      uGrainCurveOn: core.grainLut ? 1 : 0, uGrainCurve: core.grainLut || undefined });
     this._give(cur);
     const out = { rgb, glow: null, bloom: 0, warm: core.bloomWarm };
+    // 2026-11-10 にじみと白みの半径は、長い辺の割合にする。前は画の高さの割合で、縦長の写真では横長より広くにじんでいた
+    // （同じ幅で描くと 1.78 倍、同じ長い辺で描くと 1.33 倍。調査12 の E の 4-4）。横長 4:3 の写真で前と同じ半径になるよう、
+    // 係数は前の値 × 0.75（高さ ÷ 長い辺）にした
+    const longSide = Math.max(VW, VH);
     if (!compare) {
       const hal = core.halation * (1 + P.halation / 100);
       if (hal > 0) {
         const s = rt();
         this._pass("halSrc", s, { uRgb: out.rgb });
-        const g = this._blurBig(s, 0.01 * VH);
+        const g = this._blurBig(s, 0.0075 * longSide);
         this._give(s);
         const o = rt();
-        this._pass("halAdd", o, { uRgb: out.rgb, uGlow: g, uAmt: hal, uOn: 1 });
+        this._pass("halAdd", o, { uRgb: out.rgb, uGlow: g, uAmt: hal, uOn: 1, uEdge: core.halationEdge });
         this._release([g, out.rgb]);
         out.rgb = o;
       }
@@ -459,7 +510,7 @@ export class Engine {
       if (bloom > 0) {
         const s = rt();
         this._pass("bloomSrc", s, { uRgb: out.rgb });
-        out.glow = this._blurBig(s, 0.03 * VH);
+        out.glow = this._blurBig(s, 0.0225 * longSide);
         this._give(s);
         out.bloom = bloom;
       }
