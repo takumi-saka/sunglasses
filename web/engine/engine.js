@@ -18,6 +18,10 @@ export const SUN_CORE = Math.round(100 / SUN_GAIN);
 // （お手本のコマに合わせて作ったので、1.5 倍に伸ばすと濃くなりすぎ、色の付いた所で色が反対に転ぶため）。書いていない核は SUN_GAIN
 export const sunGainOf = (core) => (core && core.sunGain) || SUN_GAIN;
 export const sunCoreOf = (core) => Math.round(100 / sunGainOf(core));
+// 2026-11-10 シネマ: Sun Level のつまみは「Aftersun をどれだけ足すか」になる（looks.json の sunInto が足す先の核）。
+// はじめの値は核ごと（sunDefault。シネマは 0＝シネマそのまま、ほかの核は 100＝核そのまま）
+export const sunDefaultOf = (core) => (core && core.sunDefault !== undefined ? core.sunDefault : 100);
+export const isSunMix = (core) => !!(core && core.sunInto);
 
 // 2026-11-10 明るさの段ごとの粒の量（looks.json の grainCurve）。[[明るさ 0〜1, 倍率], …] の結び目を、
 // 結び目の間は直線でつなぎ、両端の外は端の値のまま。シェーダーには明るさ 0〜1 を 32 等分した 33 点の表で渡す。
@@ -178,7 +182,13 @@ export class Engine {
   // 核より強い所は、素の画から離れる向きに伸ばす（素の画の重みがマイナスになる）。色だけを伸ばし、粒や白みは核の量まで。
   // Aftersun+（id aftersun、最初の形）は、強さ 0.5 で弱めの核を挟む。ほかの核は、素の画からその核へなめらかに混ぜる
   lookFor(p) {
-    const s = C.clamp((p.sunLevel ?? p.strength ?? 100) / 100, 0, 1) * sunGainOf(this.coreById(p.core));
+    const c0 = this.coreById(p.core);
+    if (c0.sunInto) {
+      // シネマ: 0 でシネマそのまま、100 で「シネマに Aftersun の色を足した核」。素の画には戻さない
+      const t = C.clamp((p.sunLevel ?? sunDefaultOf(c0)) / 100, 0, 1);
+      return { A: c0, wA: 1 - t, B: this.coreById(c0.sunInto), wB: t, wN: 0 };
+    }
+    const s = C.clamp((p.sunLevel ?? p.strength ?? 100) / 100, 0, 1) * sunGainOf(c0);
     if (p.core !== "aftersun") return { A: this.coreById(p.core), wA: s, B: null, wB: 0, wN: 1 - s };
     const A = this.coreById("weak"), B = this.coreById("aftersun");
     if (s <= 0.5) return { A, wA: 2 * s, B, wB: 0, wN: 1 - 2 * s };
@@ -329,8 +339,7 @@ export class Engine {
       if (id === "neutral") {
         this.evCache[id] = C.searchEv((ev) => C.medianNeutral(im.small, im.key, ev, this.ap0ToSrgb, this.neutralCurve), this.targetL);
       } else {
-        const c = this.coreById(id);
-        this.evCache[id] = C.searchEv((ev) => C.medianCore(im.small, im.key, ev, c.cpu, this.ap0ToAp1), this.targetL + c.lift);
+        this.evCache[id] = C.coreEv(im.small, im.key, this.coreById(id), this);
       }
     }
     return this.evCache[id];
@@ -669,7 +678,7 @@ export class Engine {
       [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
     const src = { tex: up };
     const { small, key } = t;
-    const gain = (c) => (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianCore(small, key, e, c.cpu, this.ap0ToAp1), this.targetL + c.lift));
+    const gain = (c) => (0.18 / key) * Math.pow(2, C.coreEv(small, key, c, this));
     const gainN = lk.wN > 0 ? (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianNeutral(small, key, e, this.ap0ToSrgb, this.neutralCurve), this.targetL)) : 1;
     const lab = this._rt(w, h), rgb = this._rt(w, h), out = this._rt(w, h, true);
     used.push(lab, rgb, out);

@@ -3,8 +3,97 @@
  "targetL": 47.24595069885254,
  "cores": [
   {
+   "id": "cinema",
+   "name": "Cinema",
+   "desc": "映画の見た目の核（2026-11-10）。Chromagraph Camera の作例 31 枚と撮り比べ 3 組を測った形: 影を深く沈める、白は低くクリーム色で止める、色の薄い所は影がわずかに青く・明るい所ほど黄色く、空はくすんだ青緑、黄と橙は少し薄く赤寄り。Sun Level のつまみは「Aftersun をどれだけ足すか」（0 でこの核そのまま、100 で cinemasun）。露光は meter の決まり（空を軽く見た真ん中の明るさを 30 に、白を 74〜88 に）",
+   "file": "cinema.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": -17.246,
+   "meter": {
+    "skyWeight": 0.25,
+    "target": 30,
+    "whiteRank": 97,
+    "whiteRange": [
+     74,
+     88
+    ],
+    "liftLimit": 12,
+    "dropLimit": 10
+   },
+   "sunInto": "cinemasun",
+   "sunDefault": 0,
+   "halation": 0.65,
+   "halationEdge": true,
+   "bloom": 0.0,
+   "bloomWarm": 0.0,
+   "soften": 0.5,
+   "grain": 23.5,
+   "grainSize": 4.0,
+   "colorNoise": 60,
+   "grainCurve": [
+    [
+     0,
+     0.1
+    ],
+    [
+     0.03,
+     0.2
+    ],
+    [
+     0.1,
+     0.75
+    ],
+    [
+     0.2,
+     0.9
+    ],
+    [
+     0.4,
+     1.0
+    ],
+    [
+     0.5,
+     1.0
+    ],
+    [
+     0.6,
+     1.1
+    ],
+    [
+     0.7,
+     0.8
+    ],
+    [
+     0.8,
+     0.3
+    ],
+    [
+     0.9,
+     0.2
+    ],
+    [
+     1.0,
+     0.12
+    ]
+   ],
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0,
+   "sunGain": 1.0
+  },
+  {
    "id": "aftersun2",
-   "name": "Aftersun",
+   "name": "Aftersun（前の版）",
    "desc": "映画の色に一番近い核（Aftersun を普通の写真に戻した差から作った形、2026-11-06）",
    "file": "aftersun2.bin",
    "size": 65,
@@ -28,6 +117,90 @@
    "texture": 0.0,
    "clarity": 0.0,
    "vignette": 0.0
+  },
+  {
+   "id": "aftersun3",
+   "name": "Aftersun",
+   "desc": "Aftersun のコマ 21 枚を測った数に合わせた形（2026-11-10）。画の明るさは Aftersun と同じ、白は低くクリーム色でなだらかに止める、明暗をやわらかく、色の薄い所に緑がかったオリーブを乗せる（肌にはかけない）、空は Aftersun Blue と同じ深い青。質感の部品は Aftersun Blue と同じ。Sun Level 100 が核そのもの（sunGain 1）",
+   "file": "aftersun3.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": 0.0,
+   "halation": 0.84,
+   "halationEdge": true,
+   "bloom": 0.2,
+   "bloomWarm": 0.0,
+   "soften": 0.5,
+   "grain": 5.0,
+   "grainSize": 15.0,
+   "colorNoise": 60,
+   "grainCurve": [
+    [
+     0,
+     0.05
+    ],
+    [
+     0.02,
+     0.05
+    ],
+    [
+     0.045,
+     0.206
+    ],
+    [
+     0.07,
+     0.55
+    ],
+    [
+     0.095,
+     0.894
+    ],
+    [
+     0.12,
+     1.05
+    ],
+    [
+     0.55,
+     1.05
+    ],
+    [
+     0.6,
+     0.95
+    ],
+    [
+     0.65,
+     0.7
+    ],
+    [
+     0.7,
+     0.35
+    ],
+    [
+     0.75,
+     0.1
+    ],
+    [
+     0.8,
+     0.05
+    ],
+    [
+     1.0,
+     0.05
+    ]
+   ],
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0,
+   "sunGain": 1.0
   },
   {
    "id": "deepblue",
@@ -273,6 +446,94 @@
    "texture": 0.0,
    "clarity": 0.0,
    "vignette": 0.0
+  },
+  {
+   "id": "cinemasun",
+   "name": "Cinema＋Aftersun",
+   "desc": "Cinema の明暗のまま、色を Aftersun（濃い青の空・濃い色）にした核。Cinema の Sun Level 100 の先。一覧には出さない（hidden）",
+   "file": "cinemasun.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": -17.246,
+   "meter": {
+    "skyWeight": 0.25,
+    "target": 30,
+    "whiteRank": 97,
+    "whiteRange": [
+     74,
+     88
+    ],
+    "liftLimit": 12,
+    "dropLimit": 10
+   },
+   "hidden": true,
+   "halation": 0.65,
+   "halationEdge": true,
+   "bloom": 0.0,
+   "bloomWarm": 0.0,
+   "soften": 0.5,
+   "grain": 23.5,
+   "grainSize": 4.0,
+   "colorNoise": 60,
+   "grainCurve": [
+    [
+     0,
+     0.1
+    ],
+    [
+     0.03,
+     0.2
+    ],
+    [
+     0.1,
+     0.75
+    ],
+    [
+     0.2,
+     0.9
+    ],
+    [
+     0.4,
+     1.0
+    ],
+    [
+     0.5,
+     1.0
+    ],
+    [
+     0.6,
+     1.1
+    ],
+    [
+     0.7,
+     0.8
+    ],
+    [
+     0.8,
+     0.3
+    ],
+    [
+     0.9,
+     0.2
+    ],
+    [
+     1.0,
+     0.12
+    ]
+   ],
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0,
+   "sunGain": 1.0
   }
  ],
  "ap0ToAp1": [

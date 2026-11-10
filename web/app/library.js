@@ -6,7 +6,8 @@ import { h, toast } from "./ui.js";
 const THUMB_CACHE = "sg-thumbs-v2"; // v2: RAW から作る形に変えた（2026-11-05）
 const LONG_PRESS_MS = 400; // Android の長押しの標準（ViewConfiguration.getLongPressTimeout の既定）
 const TOUCH_SLOP = 8; // Android のタッチの許し幅の標準（8dp。ページの 1px はおよそ 1dp）
-const AUTO_CORE = "aftersun2"; // 直していない写真は Aftersun（逆算の形）で見せる
+const AUTO_CORE = "cinema"; // 2026-11-10 夜 直していない写真は Cinema（映画の見た目の核）で見せる。前は aftersun2
+const AUTO_SUN = 0; // Cinema の Sun Level（Aftersun を足す量）のはじめの値
 
 export class Library {
   constructor(engine, { onOpen, version }) {
@@ -247,7 +248,7 @@ export class Library {
     const key = bridge.keyOf(it);
     const edit = this.edited.has(key) ? await getEdit(key) : null;
     const ep = (edit && edit.params) || {};
-    const look = ep.core === "weak" ? { core: "aftersun", sunLevel: 50 } : { core: ep.core || AUTO_CORE, sunLevel: ep.sunLevel ?? ep.strength ?? 100 };
+    const look = ep.core === "weak" ? { core: "aftersun", sunLevel: 50 } : { core: ep.core || AUTO_CORE, sunLevel: ep.sunLevel ?? ep.strength ?? (ep.core ? 100 : AUTO_SUN) };
     const ck = `${key}:${look.core}:${Math.round(look.sunLevel)}`;
     if (this.urls.has(ck)) return this.urls.get(ck);
     const req = new Request(new URL(`thumb/${encodeURIComponent(ck)}.jpg`, document.baseURI));

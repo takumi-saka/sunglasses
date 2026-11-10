@@ -149,7 +149,8 @@ await doubleTap("#cam-ev .rg", 0);
 log.二回たたいて自動へ = await page.locator(".cam-auto").getAttribute("class");
 
 // Sun Level を左へ（値が増える向き）、右へ（減る向き）。露出と Sun Level は見出しで切り替える
-await page.locator(".cam-tab:visible", { hasText: "Sun Level" }).click();
+// （Cinema では、つまみの名前が「Aftersun」になる）
+await page.locator(".cam-tab:visible", { hasText: /Sun Level|Aftersun/ }).click();
 await page.waitForTimeout(200);
 log.切り替えたあとの輪 = await page.evaluate(() => [...document.querySelectorAll("#cam-ev .rg")].map((r) => r.getAttribute("aria-label") + (r.hidden ? "（隠れている）" : "（出ている）")));
 await clear();

@@ -29,8 +29,12 @@ const log2 = (x) => Math.log(x) / Math.LN2;
 const onOff = (b) => (b ? "オン" : "オフ");
 // 右下のルックで、たたくたびに替わる順（2026-11-06）。名前は looks.json の核の名前を使う
 // 2026-11-10 型のフィルム（deepblue＝Aftersun Blue、aqua＝Aftersun Aqua）を Aftersun の次に足した
-const FAMILIES = ["aftersun2", "deepblue", "aqua", "aftersun", "mine"];
-const FAMILY_NAMES = { aftersun2: "Aftersun", deepblue: "Aftersun Blue", aqua: "Aftersun Aqua", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
+// 2026-11-10 夜 aftersun3（Aftersun のコマを測った数に合わせた形）を足し、名前を Aftersun にした。前の Aftersun（aftersun2）は「Aftersun（前の版）」
+// 2026-11-10 夜 cinema（映画の見た目の核。Chromagraph Camera の作例を測った形）を足して、主のルックにした。
+// cinema では、Sun Level の輪は「Aftersun をどれだけ足すか」になる（0 でシネマそのまま。値はほかのルックと別に覚える）
+const FAMILIES = ["cinema", "aftersun2", "aftersun3", "deepblue", "aqua", "aftersun", "mine"];
+const SUN_MIX = ["cinema"]; // looks.json の sunInto がある核（looks.json を読む前に使う控え）
+const FAMILY_NAMES = { cinema: "Cinema", aftersun2: "Aftersun（前の版）", aftersun3: "Aftersun", deepblue: "Aftersun Blue", aqua: "Aftersun Aqua", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
 
 // シャッター速度と ISO の 1/3 段の目盛り（端末が出せる範囲だけを使う）。手応えは 1 段ごと
 const S_STOPS = [1 / 8000, 1 / 6400, 1 / 5000, 1 / 4000, 1 / 3200, 1 / 2500, 1 / 2000, 1 / 1600, 1 / 1250, 1 / 1000, 1 / 800, 1 / 640, 1 / 500, 1 / 400, 1 / 320, 1 / 250, 1 / 200, 1 / 160,
@@ -83,8 +87,13 @@ export class Camera {
       if ((pref("cameraFamily") || "aftersun") === "aftersun") pref("cameraFamily", "aftersun2");
       pref("cameraFamilyV2", 1);
     }
-    this.family = FAMILIES.includes(pref("cameraFamily")) ? pref("cameraFamily") : "aftersun2";
-    this.sunLevel = pref("cameraSunLevel") ?? 100;
+    // シネマを足したとき（2026-11-10）、1回だけ、撮る画面のルックをシネマにする（ルックのボタンで前のルックに戻せる）
+    if (!pref("cameraFamilyV3")) {
+      pref("cameraFamily", "cinema");
+      pref("cameraFamilyV3", 1);
+    }
+    this.family = FAMILIES.includes(pref("cameraFamily")) ? pref("cameraFamily") : "cinema";
+    this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
     this.build();
     window.addEventListener("sunglasses:camera", (e) => this.onCamera(e.detail));
     window.addEventListener("sunglasses:camera-sample", (e) => this.onSample(e.detail));
@@ -306,6 +315,23 @@ export class Camera {
   }
 
   // ---------- ルックと Sun Level ----------
+  // シネマでは、輪は「Aftersun をどれだけ足すか」（はじめは 0）。ほかのルックでは Sun Level（はじめは 100）。値は別々に覚える
+  sunMix() {
+    return SUN_MIX.includes(this.family);
+  }
+
+  sunKey() {
+    return this.sunMix() ? "cameraSunMix" : "cameraSunLevel";
+  }
+
+  sunDef() {
+    return this.sunMix() ? 0 : 100;
+  }
+
+  sunName() {
+    return this.sunMix() ? "Aftersun" : "Sun Level";
+  }
+
   look() {
     return this.engine.lookFor({ core: this.family, sunLevel: this.sunLevel });
   }
@@ -356,6 +382,7 @@ export class Camera {
   async nextFamily() {
     this.family = FAMILIES[(FAMILIES.indexOf(this.family) + 1) % FAMILIES.length];
     pref("cameraFamily", this.family);
+    this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
     bridge.haptic("tick");
     this.renderSettings();
     this.bubble("ルック", this.els.coreBtn.querySelector("b").textContent, 1100);
@@ -670,7 +697,7 @@ export class Camera {
       const dial = pref("cameraDial") === "sun" ? "sun" : "ev";
       const tabs = (cur) => h("span", { class: "cam-tabs" },
         h("button", { class: "cam-tab" + (cur === "ev" ? " is-on" : ""), onClick: () => this.setDial("ev") }, "露出"),
-        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), onClick: () => this.setDial("sun") }, "Sun Level"));
+        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), onClick: () => this.setDial("sun") }, this.sunName()));
       const evStops = [];
       for (let k = -9; k <= 9; k++) evStops.push({ v: k / 3, mark: k % 3 ? "minor" : "major", label: k % 3 ? null : (k > 0 ? "+" : k < 0 ? "−" : "") + Math.abs(k / 3), gap: 17 });
       this.evStops = evStops;
@@ -693,19 +720,19 @@ export class Camera {
         label: "", extra: h("span", { class: "cam-dial-extra" }, tabs("sun")), stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: sc < 100 ? [sc] : [],
         onInput: (v) => {
           this.sunLevel = v;
-          pref("cameraSunLevel", v);
+          pref(this.sunKey(), v);
           this.sendWeights();
-          this.bubble("Sun Level", String(v));
+          this.bubble(this.sunName(), String(v));
         },
         onReset: () => {
-          this.sunLevel = 100;
-          pref("cameraSunLevel", 100);
-          lv.set(100);
+          this.sunLevel = this.sunDef();
+          pref(this.sunKey(), this.sunLevel);
+          lv.set(this.sunLevel);
           this.sendWeights();
         },
       });
       this.evRing.el.setAttribute("aria-label", "露出");
-      lv.el.setAttribute("aria-label", "Sun Level");
+      lv.el.setAttribute("aria-label", this.sunName());
       this.evRing.el.hidden = dial !== "ev";
       lv.el.hidden = dial !== "sun";
       this.dialEls = { ev: this.evRing.el, sun: lv.el };
@@ -786,7 +813,7 @@ export class Camera {
   baseGain(core) {
     if (this.base[core.id] === undefined) {
       const gray = new Float32Array(48).fill(0.18);
-      const ev = C.searchEv((e) => C.medianCore(gray, 0.18, e, core.cpu, this.engine.ap0ToAp1), this.engine.targetL + core.lift);
+      const ev = C.coreEv(gray, 0.18, core, this.engine);
       this.base[core.id] = Math.pow(2, ev);
     }
     return this.base[core.id];
@@ -831,7 +858,7 @@ export class Camera {
       const k0 = key / Math.pow(2, this.cEvNow || 0);
       this.aeKey = this.aeKey ? this.aeKey * 0.8 + k0 * 0.2 : k0;
     } else if (this.sensorManual() && !this.fullManual()) this.priorityStep(key);
-    const gainOf = (core) => (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianCore(small, key, e, core.cpu, this.engine.ap0ToAp1, wts), this.engine.targetL + core.lift));
+    const gainOf = (core) => (0.18 / key) * Math.pow(2, C.coreEv(small, key, core, this.engine, wts));
     const gA = gainOf(lk.A), gB = lk.B ? gainOf(lk.B) : gA;
     this.gains = { A: this.gains.A * 0.6 + gA * 0.4, B: this.gains.B * 0.6 + gB * 0.4 };
     this.autoNow = { A: gA, B: gB };

@@ -7,9 +7,10 @@
   import { Engine, defaultParams } from "/engine/engine.js";
   window.__run = async (dngUrl, width, modes) => {
     const e = window.__e || (window.__e = await Engine.create(document.getElementById("c")));
-    const buf = await (await fetch(dngUrl)).arrayBuffer();
+    const res = await fetch(dngUrl);
     const t0 = performance.now();
-    const im = await e.openRaw(buf);
+    // JPEG・PNG（ほかのアプリの写真）は、アプリと同じく画像として開く。それ以外は RAW
+    const im = /\.(jpe?g|png)$/i.test(dngUrl) ? await e.openBitmap(await createImageBitmap(await res.blob())) : await e.openRaw(await res.arrayBuffer());
     const out = { meta: im.meta, key: im.key, w: im.w, h: im.h, decodeMs: performance.now() - t0, results: [] };
     for (const m of modes) {
       const p = defaultParams();

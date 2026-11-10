@@ -1,7 +1,7 @@
 // 編集の画面（2026-11-05）。
 // 写真の上: 押している間は元の画、2 回たたくと全画面、2 本指でつまむと拡大、拡大中は 1 本指で動かす。
 // 下の板: 核の箱・つまみ（よく使う／明るさ／色／色ごと／グレーディング／効果／細部／切り抜き）。
-import { defaultParams, sunCoreOf, sunGainOf } from "../engine/engine.js";
+import { defaultParams, isSunMix, sunCoreOf, sunDefaultOf, sunGainOf } from "../engine/engine.js";
 import * as bridge from "./bridge.js";
 import { cropForAspect, panCrop, rotateCrop, zoomCrop } from "./crop.js";
 import { curveEditor } from "./curve.js";
@@ -9,8 +9,9 @@ import { ASPECTS, GRADE_ZONES, GROUPS, HSL_COLORS, HSL_NAMES, KNOBS, changed } f
 import { deleteEdit, getEdit, pref, setEdit } from "./store.js";
 import { closeSheet, h, sheet, slider, toast } from "./ui.js";
 
-const CORE_BANDS = { aftersun2: ["#9a9a6e", "#d9c7a4"], deepblue: ["#1d6f8c", "#d9c7a4"], aqua: ["#62bcb6", "#e8d6b0"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
-const AUTO_CORE = "aftersun2"; // 昼の写真はいまは Aftersun（逆算の形）。夜の核ができたら、夜の写真は夜の核を選ぶ
+const CORE_BANDS = { cinema: ["#2f5d62", "#e6cf9a"], aftersun2: ["#9a9a6e", "#d9c7a4"], aftersun3: ["#5f8f7a", "#d9c7a4"], deepblue: ["#1d6f8c", "#d9c7a4"], aqua: ["#62bcb6", "#e8d6b0"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
+const AUTO_CORE = "cinema"; // 2026-11-10 夜 直していない写真は Cinema（映画の見た目の核）で開く。前は aftersun2
+const AUTO = { core: AUTO_CORE, sunLevel: 0 }; // Cinema の Sun Level（Aftersun を足す量）は 0 がはじめの値
 const FLIP_DEG = { 3: 180, 5: -90, 6: 90 };
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const trashIcon = () => {
@@ -98,7 +99,7 @@ export class Editor {
     this.setBadge("現像しています…", true);
     this.resize();
     const saved = await getEdit(this.key);
-    this.params = saved && saved.params ? mergeParams(saved.params) : { ...defaultParams(), core: AUTO_CORE };
+    this.params = saved && saved.params ? mergeParams(saved.params) : { ...defaultParams(), ...AUTO };
     this.committed = JSON.stringify(this.params);
     this.history = [];
     this.future = [];
@@ -403,7 +404,7 @@ export class Editor {
   groupChanged(g) {
     const p = this.params;
     if (g.knobs) return g.knobs.some((k) => changed(p, k)) || (g.curve && (Object.values(p.curve).some((c) => c && c.length) || Object.values(p.param).some((v) => v))) || (g.bw && p.bw);
-    if (g.id === "core") return p.core !== AUTO_CORE || (p.sunLevel ?? 100) !== 100;
+    if (g.id === "core") return p.core !== AUTO_CORE || (p.sunLevel ?? AUTO.sunLevel) !== AUTO.sunLevel;
     if (g.id === "mix") return ["hue", "sat", "lum"].some((k) => p.hsl[k].some((v) => v));
     if (g.id === "grade") return p.grading.balance !== 0 || GRADE_ZONES.some(([z]) => p.grading[z].sat || p.grading[z].lum);
     if (g.id === "crop") return p.crop.w < 0.999 || p.crop.h < 0.999 || p.crop.angle !== 0;
@@ -459,14 +460,17 @@ export class Editor {
   }
 
   corePanel() {
-    const boxes = this.engine.cores.filter((c) => c.id !== "weak").map((c) => {
+    const boxes = this.engine.cores.filter((c) => c.id !== "weak" && !c.hidden).map((c) => {
       const cv = h("canvas", { class: "core-cv" });
       const [c1, c2] = CORE_BANDS[c.id] || ["#555", "#999"];
       const box = h("button", {
         class: "core-box" + (c.id === this.params.core ? " is-on" : ""), style: { "--c1": c1, "--c2": c2 },
         onClick: () => {
           if (this.params.core === c.id) return;
+          // Cinema とほかのルックでは Sun Level の意味が違うので、行き来するときは、そのルックのはじめの値にする
+          const from = this.engine.coreById(this.params.core);
           this.setParam("core", c.id);
+          if (isSunMix(from) !== isSunMix(c)) this.setParam("sunLevel", sunDefaultOf(c));
           this.commit();
           bridge.haptic("tick");
           this.renderPanel();
@@ -480,6 +484,11 @@ export class Editor {
     requestAnimationFrame(() => this.drawCoreThumbs(row));
     const core = this.engine.coreById(this.params.core), name = core.name, sc = sunCoreOf(core);
     // 2026-11-10 核ごとの強さ。型のフィルムは 100 が核そのもの（止まる所なし）
+    if (isSunMix(core)) {
+      // Cinema: つまみは「Aftersun をどれだけ足すか」
+      const mixNote = h("p", { class: "note" }, `Aftersun は、0 で ${name} そのまま。上げるほど、空が深い青に、色が濃くなります（映画 Aftersun の色）。`);
+      return [row, this.knob("sunLevel", { label: "Aftersun", def: sunDefaultOf(core) }), mixNote];
+    }
     const note = h("p", { class: "note" }, sc >= 100 ? `Sun Level は、0 で素の画、100 で ${name} そのまま。`
       : `Sun Level は、0 で素の画、${sc} で ${name} そのまま、100 でその ${sunGainOf(core)} 倍。${sc} で軽く止まります。`);
     return [row, this.knob("sunLevel", { snaps: sc < 100 ? [sc] : [] }), note];
@@ -493,7 +502,7 @@ export class Editor {
     }
     const keep = this.engine.params;
     for (const box of row.querySelectorAll(".core-box")) {
-      this.engine.params = { ...defaultParams(), core: box.dataset.core, sunLevel: 100, crop: keep.crop };
+      this.engine.params = { ...defaultParams(), core: box.dataset.core, sunLevel: sunDefaultOf(this.engine.coreById(box.dataset.core)), crop: keep.crop };
       const r = this.engine.renderPixels(220);
       const cv = box.querySelector("canvas");
       cv.width = r.width;
@@ -582,7 +591,7 @@ export class Editor {
         bridge.haptic("confirm");
       }, !clip),
       row("すべて戻す", "ルックとつまみを最初の状態に戻す（1つ戻すで取り消せる）", () => {
-        this.params = { ...defaultParams(), core: AUTO_CORE };
+        this.params = { ...defaultParams(), ...AUTO };
         this.engine.setParams(this.params);
         this.commit();
         this.renderPanel();
@@ -639,7 +648,7 @@ export class Editor {
       const blob = await this.engine.exportJpeg({ maxSide, quality: 0.95 });
       const name = (item.name || "photo").replace(/\.[^.]+$/, "") + "_sunglasses.jpg";
       const p = this.params, core = this.engine.coreById(p.core);
-      const note = `Sunglasses: ${core.name} Sun Level ${Math.round(p.sunLevel ?? 100)}, exposure ${p.exposure >= 0 ? "+" : ""}${p.exposure.toFixed(2)}`;
+      const note = `Sunglasses: ${core.name} ${isSunMix(core) ? "Aftersun" : "Sun Level"} ${Math.round(p.sunLevel ?? sunDefaultOf(core))}, exposure ${p.exposure >= 0 ? "+" : ""}${p.exposure.toFixed(2)}`;
       const res = await bridge.saveJpeg(blob, { name, folder: "DCIM/Camera", item, copyLocation, note });
       if (!res.ok) throw new Error(res.error || "保存できませんでした");
       bridge.haptic("confirm");

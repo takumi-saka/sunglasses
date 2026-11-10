@@ -127,6 +127,64 @@ export function medianNeutral(small, key, ev, ap0ToSrgb, curve) {
   return median(L);
 }
 
+// ---------- 露光の決まり（2026-11-10 シネマの核で足した。パソコンの道具の direction_samples.meter_ev と同じ）----------
+// 核に meter が無ければ今までどおり: 仕上がりの真ん中の明るさを targetL + lift に合わせる。
+// meter がある核（シネマ）:
+//   1. 素直な現像で「青くて明るい所（空）」を skyWeight の重みで軽く見た、重みつきの真ん中の明るさを target に合わせる
+//      （空の大きい写真で、空に引っぱられて地面が真っ黒になるのを防ぐ）
+//   2. 仕上がりの明るさの上の方（下から whiteRank % の所）が whiteRange に入るように露光を止める
+//      （雲の白飛びと、白が低すぎる画を防ぐ）。明暗の差が小さい景色で明るくなりすぎないよう、
+//      白のために上げるのは、真ん中の明るさが target + liftLimit になる所まで。
+//      白飛びした面が広い写真（逆光・くもり空）で画全体が真っ暗にならないよう、白のために下げるのは target - dropLimit になる所まで
+// 速さのため、meter のある核は小さな画を 1 つおきに測り、真ん中と順位は 0.1 刻みの山（ヒストグラム）で出す
+const METER_STEP = 2, HIST_N = 1001;
+function meterHist(small, key, ev, lut, ap0ToAp1, w) {
+  const g = (0.18 / key) * Math.pow(2, ev), n = small.length / 3, hist = new Float64Array(HIST_N);
+  for (let i = 0, j = 0; i < n; i += METER_STEP, j++) {
+    const v = mul3(ap0ToAp1, small[i * 3] * g, small[i * 3 + 1] * g, small[i * 3 + 2] * g);
+    const o = lut.apply(acescct(Math.max(v[0], 0)), acescct(Math.max(v[1], 0)), acescct(Math.max(v[2], 0)));
+    hist[Math.round(clamp(lightness(o[0], o[1], o[2]), 0, 100) * 10)] += w ? w[j] : 1;
+  }
+  return hist;
+}
+function histAt(hist, q) {
+  let total = 0;
+  for (let i = 0; i < HIST_N; i++) total += hist[i];
+  let acc = 0;
+  for (let i = 0; i < HIST_N; i++) {
+    acc += hist[i];
+    if (acc >= total * q) return i / 10;
+  }
+  return 100;
+}
+// 空を軽く見る重み（測る画素だけ。base は、撮る画面でたたいた所を重く測る重み）
+function skyWeights(small, key, ap0ToSrgb, curve, skyWeight, base) {
+  const g = 0.18 / key, n = small.length / 3, w = new Float32Array(Math.ceil(n / METER_STEP));
+  const c01 = (v) => clamp(v, 0, 1);
+  for (let i = 0, j = 0; i < n; i += METER_STEP, j++) {
+    const o = neutralPixel(ap0ToSrgb, curve, small[i * 3] * g, small[i * 3 + 1] * g, small[i * 3 + 2] * g);
+    const [L, a, b] = rgb2lab(o[0], o[1], o[2]);
+    const hue = ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360, chroma = Math.hypot(a, b);
+    const sky = c01((hue - 185) / 30) * c01((310 - hue) / 20) * c01((chroma - 6) / 6) * c01((L - 30) / 15);
+    w[j] = (1 - (1 - skyWeight) * sky) * (base ? base[i] : 1);
+  }
+  return w;
+}
+// 核の露光量（段）。env は { ap0ToAp1, ap0ToSrgb, neutralCurve, targetL }（engine をそのまま渡せる）
+export function coreEv(small, key, core, env, weights = null) {
+  const m = core.meter;
+  if (!m) return searchEv((e) => medianCore(small, key, e, core.cpu, env.ap0ToAp1, weights), env.targetL + core.lift);
+  const w = skyWeights(small, key, env.ap0ToSrgb, env.neutralCurve, m.skyWeight ?? 1, weights);
+  const mid = (e) => histAt(meterHist(small, key, e, core.cpu, env.ap0ToAp1, w), 0.5);
+  const top = (e) => histAt(meterHist(small, key, e, core.cpu, env.ap0ToAp1, null), (m.whiteRank ?? 97) / 100);
+  const ev = searchEv(mid, m.target);
+  if (!m.whiteRange) return ev;
+  const t = top(ev);
+  if (t > m.whiteRange[1]) return Math.max(searchEv(top, m.whiteRange[1]), searchEv(mid, m.target - (m.dropLimit ?? 100)));
+  if (t < m.whiteRange[0]) return Math.max(ev, Math.min(searchEv(top, m.whiteRange[0]), searchEv(mid, m.target + (m.liftLimit ?? 100))));
+  return ev;
+}
+
 // 曲線の点からなめらかな曲線を作る（scipy の PchipInterpolator と同じ作り方。行き過ぎない）
 export function pchip(points, n = 1025) {
   const m = new Map([[0, 0], [255, 255]]);
