@@ -58,6 +58,34 @@
    "sunGain": 1.0
   },
   {
+   "id": "aqua",
+   "name": "Aftersun Aqua",
+   "desc": "Aftersun の「明るい水色の空」の型（11・17 番のコマ）。画全体を明るく、明るい空を水色（色相 206）に寄せ、白を 79 で止める。Sun Level 100 が核そのもの（sunGain 1）（2026-11-10、型のフィルム）",
+   "file": "aqua.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": 14.0,
+   "halation": 0.18,
+   "bloom": 0.6,
+   "bloomWarm": 1.0,
+   "soften": 0.5,
+   "grain": 3.0,
+   "grainSize": 25.0,
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0,
+   "sunGain": 1.0
+  },
+  {
    "id": "aftersun",
    "name": "Aftersun+",
    "desc": "最初の Aftersun（青緑を足した形）",

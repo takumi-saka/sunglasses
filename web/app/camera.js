@@ -28,9 +28,9 @@ const SETTINGS = {
 const log2 = (x) => Math.log(x) / Math.LN2;
 const onOff = (b) => (b ? "オン" : "オフ");
 // 右下のルックで、たたくたびに替わる順（2026-11-06）。名前は looks.json の核の名前を使う
-// 2026-11-10 型のフィルム（deepblue＝Aftersun Blue）を Aftersun の次に足した
-const FAMILIES = ["aftersun2", "deepblue", "aftersun", "mine"];
-const FAMILY_NAMES = { aftersun2: "Aftersun", deepblue: "Aftersun Blue", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
+// 2026-11-10 型のフィルム（deepblue＝Aftersun Blue、aqua＝Aftersun Aqua）を Aftersun の次に足した
+const FAMILIES = ["aftersun2", "deepblue", "aqua", "aftersun", "mine"];
+const FAMILY_NAMES = { aftersun2: "Aftersun", deepblue: "Aftersun Blue", aqua: "Aftersun Aqua", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
 
 // シャッター速度と ISO の 1/3 段の目盛り（端末が出せる範囲だけを使う）。手応えは 1 段ごと
 const S_STOPS = [1 / 8000, 1 / 6400, 1 / 5000, 1 / 4000, 1 / 3200, 1 / 2500, 1 / 2000, 1 / 1600, 1 / 1250, 1 / 1000, 1 / 800, 1 / 640, 1 / 500, 1 / 400, 1 / 320, 1 / 250, 1 / 200, 1 / 160,

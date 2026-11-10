@@ -9,7 +9,7 @@ import { ASPECTS, GRADE_ZONES, GROUPS, HSL_COLORS, HSL_NAMES, KNOBS, changed } f
 import { deleteEdit, getEdit, pref, setEdit } from "./store.js";
 import { closeSheet, h, sheet, slider, toast } from "./ui.js";
 
-const CORE_BANDS = { aftersun2: ["#9a9a6e", "#d9c7a4"], deepblue: ["#1d6f8c", "#d9c7a4"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
+const CORE_BANDS = { aftersun2: ["#9a9a6e", "#d9c7a4"], deepblue: ["#1d6f8c", "#d9c7a4"], aqua: ["#62bcb6", "#e8d6b0"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
 const AUTO_CORE = "aftersun2"; // 昼の写真はいまは Aftersun（逆算の形）。夜の核ができたら、夜の写真は夜の核を選ぶ
 const FLIP_DEG = { 3: 180, 5: -90, 6: 90 };
 const clone = (o) => JSON.parse(JSON.stringify(o));
