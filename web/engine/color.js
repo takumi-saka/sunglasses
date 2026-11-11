@@ -181,7 +181,18 @@ export function coreEv(small, key, core, env, weights = null) {
   if (!m.whiteRange) return ev;
   const t = top(ev);
   if (t > m.whiteRange[1]) return Math.max(searchEv(top, m.whiteRange[1]), searchEv(mid, m.target - (m.dropLimit ?? 100)));
-  if (t < m.whiteRange[0]) return Math.max(ev, Math.min(searchEv(top, m.whiteRange[0]), searchEv(mid, m.target + (m.liftLimit ?? 100))));
+  if (t < m.whiteRange[0]) {
+    let up = Math.min(searchEv(top, m.whiteRange[0]), searchEv(mid, m.target + (m.liftLimit ?? 100)));
+    if (m.liftWhole) {
+      // 2026-11-11 足した。白のために上げる時は、空を軽く見ない「画面全体の真ん中の明るさ」も target + liftLimit で止める。
+      // 青空が大半の景色で、地面に合わせて上げると空が明るくなりすぎ、深い青がクリーム色にくすむ
+      // （Chromagraph の作り手本人たちの作例は、空を明るさ 41〜46 に置いて地面を暗く落としている）
+      const wAll = skyWeights(small, key, env.ap0ToSrgb, env.neutralCurve, 1, weights);
+      const midAll = (e) => histAt(meterHist(small, key, e, core.cpu, env.ap0ToAp1, wAll), 0.5);
+      up = Math.min(up, searchEv(midAll, m.target + (m.liftLimit ?? 100)));
+    }
+    return Math.max(ev, up);
+  }
   return ev;
 }
 

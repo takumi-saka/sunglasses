@@ -5,7 +5,7 @@
   {
    "id": "cinema",
    "name": "Cinema",
-   "desc": "映画の見た目の核（2026-11-10）。Chromagraph Camera の作例 31 枚と撮り比べ 3 組を測った形: 影を深く沈める、白は低くクリーム色で止める、色の薄い所は影がわずかに青く・明るい所ほど黄色く、空はくすんだ青緑、黄と橙は少し薄く赤寄り。Sun Level のつまみは「Aftersun をどれだけ足すか」（0 でこの核そのまま、100 で cinemasun）。露光は meter の決まり（空を軽く見た真ん中の明るさを 30 に、白を 74〜88 に）",
+   "desc": "映画の見た目の核（2026-11-11 シネマ10）。Chromagraph Camera と純正カメラの撮り比べ 5 組に合わせ込み、作り手本人たち（Steve Yedlin と仲間）の作例 10 枚で確かめた形: 素直な現像のまま影を少し落とす、白と明るい所はクリーム色（黒は無色）、色は少し淡く、明るいかすんだ空はクリーム色に・深い青空と海は濃い青緑のまま残す。Sun Level のつまみは「Aftersun をどれだけ足すか」（0 でこの核そのまま、100 で cinemasun）。露光は meter の決まり（空を軽く見た真ん中の明るさを 32 に、白を 72〜90 に。白のために上げるのは、空を含めた画面全体の真ん中が 44 になる所まで）",
    "file": "cinema.bin",
    "size": 65,
    "lo": [
@@ -21,14 +21,15 @@
    "lift": -17.246,
    "meter": {
     "skyWeight": 0.25,
-    "target": 30,
+    "target": 32,
     "whiteRank": 97,
     "whiteRange": [
-     74,
-     88
+     72,
+     90
     ],
     "liftLimit": 12,
-    "dropLimit": 10
+    "dropLimit": 12,
+    "liftWhole": true
    },
    "sunInto": "cinemasun",
    "sunDefault": 0,
@@ -466,14 +467,15 @@
    "lift": -17.246,
    "meter": {
     "skyWeight": 0.25,
-    "target": 30,
+    "target": 32,
     "whiteRank": 97,
     "whiteRange": [
-     74,
-     88
+     72,
+     90
     ],
     "liftLimit": 12,
-    "dropLimit": 10
+    "dropLimit": 12,
+    "liftWhole": true
    },
    "hidden": true,
    "halation": 0.65,
