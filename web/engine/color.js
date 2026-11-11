@@ -37,6 +37,54 @@ export function halfToFloat(u16) {
   return out;
 }
 
+// ---------- 光の色を残す（2026-11-11 シネマの核で足した）----------
+// RAW は、端末が決めた白の基準で現像するので、電球の下でも白い物は白くなる（光の色を全部打ち消す）。
+// Chromagraph は電球の光の橙色を残す（作り手の作例のバーのランプ、純正との撮り比べのマリオ）。
+// そこで、黄色い光のときだけ、白の基準を「端末が決めた値」と「昼の光の値」のあいだに置き直す。
+//   light = { ratio: 昼の基準 ÷ 端末の基準（緑が 1。カメラの色）, cam: カメラの色 → sRGB の光の量の行列 }（raw.cpp が写真の情報に入れる）
+//   keep  = { from: 光の黄色さ（下の w）がこの値を超えた分だけ残す, amount: 超えた分のうち残す割合 }（looks.json の keepLight）
+//   光の黄色さ w = ln(赤 ÷ 青)。白い物を昼の基準で現像したときの sRGB の光の量で測る
+//   （本人の昼の写真 11 枚は 0.14〜0.58、電球の店の 1 枚〈約 3,200K〉は 1.35。from 0.8 は約 4,300K に当たる）
+// 返すのは AP0 → AP0 の行列（白い物の明るさは変えない）。残す物が無ければ null
+const inv3 = (m) => {
+  const [a, b, c, d, e, f, g, h, i] = m, A = e * i - f * h, B = f * g - d * i, Cc = d * h - e * g, det = a * A + b * B + c * Cc;
+  if (!(Math.abs(det) > 1e-9)) return null;
+  return [A / det, (c * h - b * i) / det, (b * f - c * e) / det, B / det, (a * i - c * g) / det, (c * d - a * f) / det, Cc / det, (b * g - a * h) / det, (a * e - b * d) / det];
+};
+const mm3 = (x, y) => {
+  const o = new Array(9);
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) o[r * 3 + c] = x[r * 3] * y[c] + x[r * 3 + 1] * y[3 + c] + x[r * 3 + 2] * y[6 + c];
+  return o;
+};
+export function keepLightMatrix(light, keep, ap0ToSrgb, srgbToAp0) {
+  if (!light || !keep || !Array.isArray(light.ratio) || !Array.isArray(light.cam) || light.cam.length !== 9) return null;
+  const r = light.ratio, cam = light.cam, camInv = inv3(cam);
+  if (!camInv || !(r[0] > 0 && r[1] > 0 && r[2] > 0)) return null;
+  const ls = mul3(cam, r[0], r[1], r[2]);
+  if (!(ls[0] > 0 && ls[2] > 0)) return null;
+  const w = Math.log(ls[0] / ls[2]), over = w - (keep.from ?? 0.8);
+  if (!(over > 0)) return null;
+  const s = Math.min(((keep.amount ?? 0.7) * over) / w, 0.9);
+  const d = [Math.pow(r[0], s), 0, 0, 0, Math.pow(r[1], s), 0, 0, 0, Math.pow(r[2], s)];
+  const m = mm3(srgbToAp0, mm3(mm3(mm3(cam, d), camInv), ap0ToSrgb));
+  // 白い物（sRGB で 1,1,1）の明るさが変わらないようにそろえる（露光の自動合わせを動かさないため）
+  const white = mul3(srgbToAp0, 1, 1, 1), kept = mul3(m, white[0], white[1], white[2]);
+  const y0 = AP0_Y[0] * white[0] + AP0_Y[1] * white[1] + AP0_Y[2] * white[2], y1 = AP0_Y[0] * kept[0] + AP0_Y[1] * kept[1] + AP0_Y[2] * kept[2];
+  if (!(y1 > 0) || m.some((v) => !Number.isFinite(v))) return null;
+  return m.map((v) => (v * y0) / y1);
+}
+// 露光の自動合わせ用の小さな画に、同じ行列を掛けた写しを作る
+export function applyMatrix(small, m) {
+  const out = new Float32Array(small.length);
+  for (let i = 0; i < small.length; i += 3) {
+    const v = mul3(m, small[i], small[i + 1], small[i + 2]);
+    out[i] = v[0];
+    out[i + 1] = v[1];
+    out[i + 2] = v[2];
+  }
+  return out;
+}
+
 // 65³ の対応表を CPU で引く（立方体の8点で直線に混ぜる。露光量の自動合わせに使う）
 export class CpuLut {
   constructor(n, lo, hi, data) {

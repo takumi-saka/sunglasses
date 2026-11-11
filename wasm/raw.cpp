@@ -157,6 +157,22 @@ EMSCRIPTEN_KEEPALIVE int sg_develop(int half) {
   float* cm = R->imgdata.color.cam_mul;
   float mn = std::min(cm[0], std::min(cm[1], cm[2])), mx = std::max(cm[0], std::max(cm[1], cm[2]));
   bool camWb = mn > 0 && mx / mn > 1.3f;
+  // 2026-11-11 光の色を残すルック（Cinema）のために、現像の前に「昼の光の白の基準 ÷ 端末が決めた白の基準」と、
+  // カメラの色 → sRGB の行列を控える（dcraw_process のあとは、昼の基準が端末の基準で上書きされる）。
+  // 比は緑を 1 にした値。白い物を昼の基準で現像したときの色（カメラの色）に当たる
+  std::string light = "null";
+  {
+    const float* pm = R->imgdata.color.pre_mul;
+    if (camWb && pm[0] > 0 && pm[1] > 0 && pm[2] > 0 && cm[0] > 0 && cm[1] > 0 && cm[2] > 0) {
+      double g = double(pm[1]) / cm[1];
+      char lb[512];
+      const auto& rc = R->imgdata.color.rgb_cam;
+      std::snprintf(lb, sizeof lb, "{\"ratio\":[%.6g,1,%.6g],\"cam\":[%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g,%.6g]}",
+                    double(pm[0]) / cm[0] / g, double(pm[2]) / cm[2] / g, rc[0][0], rc[0][1], rc[0][2], rc[1][0], rc[1][1],
+                    rc[1][2], rc[2][0], rc[2][1], rc[2][2]);
+      light = lb;
+    }
+  }
   if (camWb) {
     P.use_camera_wb = 1;
   } else {
@@ -173,14 +189,14 @@ EMSCRIPTEN_KEEPALIVE int sg_develop(int half) {
   const auto& O = R->imgdata.other;
   const auto& I = R->imgdata.idata;
   const auto& S = R->imgdata.sizes;
-  char b[1024];
+  char b[2048];
   std::snprintf(b, sizeof b,
                 "{\"make\":\"%s\",\"model\":\"%s\",\"lens\":\"%s\",\"iso\":%g,\"shutter\":%g,\"aperture\":%g,"
                 "\"focal\":%g,\"timestamp\":%lld,\"flip\":%d,\"rawWidth\":%d,\"rawHeight\":%d,\"width\":%d,"
-                "\"height\":%d,\"half\":%d,\"wb\":\"%s\",\"gainMaps\":%d}",
+                "\"height\":%d,\"half\":%d,\"wb\":\"%s\",\"gainMaps\":%d,\"light\":%s}",
                 esc(I.make).c_str(), esc(I.model).c_str(), esc(R->imgdata.lens.Lens).c_str(), O.iso_speed, O.shutter,
                 O.aperture, O.focal_len, (long long)O.timestamp, S.flip, S.raw_width, S.raw_height, img->width,
-                img->height, P.half_size, camWb ? "camera" : "daylight", gainMapsApplied);
+                img->height, P.half_size, camWb ? "camera" : "daylight", gainMapsApplied, light.c_str());
   meta = b;
   // 画だけ残して、LibRaw の中の大きな作業用の領域を先に空ける
   R->recycle();

@@ -219,9 +219,20 @@ export class Engine {
       halationEdge: parts.some(([c]) => c.halationEdge) ? 1 : 0 };
   }
 
-  _lookUniforms(lk, gain) {
+  // 2026-11-11 光の色を残す行列（核に keepLight があり、写真が黄色い光のときだけ。無ければ null）
+  _keepFor(core, meta) {
+    return core && core.keepLight ? C.keepLightMatrix(meta && meta.light, core.keepLight, this.ap0ToSrgb, this.srgbToAp0) : null;
+  }
+  // 露光の自動合わせに使う小さな画。光の色を残す核には、同じ行列を掛けた写しを渡す（描く画と同じ色で測る）
+  _smallFor(core, small, meta) {
+    const m = this._keepFor(core, meta);
+    return m ? C.applyMatrix(small, m) : small;
+  }
+
+  _lookUniforms(lk, gain, meta) {
     const B = lk.B || lk.A;
     return {
+      uKeepA: (lk.wA > 0 && this._keepFor(lk.A, meta)) || I3, uKeepB: (lk.B && lk.wB > 0 && this._keepFor(lk.B, meta)) || I3,
       uLutA: { tex: lk.A.tex }, uLoA: lk.A.lo, uHiA: lk.A.hi, uNA: lk.A.size, uGainA: lk.wA > 0 ? gain(lk.A) : 1, uWA: lk.wA,
       uLutB: { tex: B.tex }, uLoB: B.lo, uHiB: B.hi, uNB: B.size, uGainB: lk.B && lk.wB > 0 ? gain(lk.B) : 1, uWB: lk.wB, uWN: lk.wN,
     };
@@ -339,7 +350,8 @@ export class Engine {
       if (id === "neutral") {
         this.evCache[id] = C.searchEv((ev) => C.medianNeutral(im.small, im.key, ev, this.ap0ToSrgb, this.neutralCurve), this.targetL);
       } else {
-        this.evCache[id] = C.coreEv(im.small, im.key, this.coreById(id), this);
+        const core = this.coreById(id);
+        this.evCache[id] = C.coreEv(this._smallFor(core, im.small, im.meta), im.key, core, this);
       }
     }
     return this.evCache[id];
@@ -445,7 +457,7 @@ export class Engine {
     const gainN = (0.18 / im.key) * Math.pow(2, this.autoEv("neutral") + P.exposure);
     let cur = rt();
     this._pass("develop", cur, {
-      uSrc: this.src.tex, uXf: mul33(this._cropToSrc(), toCrop), ...this._lookUniforms(lk, gain),
+      uSrc: this.src.tex, uXf: mul33(this._cropToSrc(), toCrop), ...this._lookUniforms(lk, gain, im.meta),
       uAp0ToAp1: this.ap0ToAp1, uAp0ToSrgb: this.ap0ToSrgb, uNeutralCurve: this.neutralCurveTex,
       uGainN: gainN, uKnobs: compare ? 0 : 1, ...this._knobUniforms(),
     });
@@ -678,12 +690,12 @@ export class Engine {
       [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
     const src = { tex: up };
     const { small, key } = t;
-    const gain = (c) => (0.18 / key) * Math.pow(2, C.coreEv(small, key, c, this));
+    const gain = (c) => (0.18 / key) * Math.pow(2, C.coreEv(this._smallFor(c, small, t.meta), key, c, this));
     const gainN = lk.wN > 0 ? (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianNeutral(small, key, e, this.ap0ToSrgb, this.neutralCurve), this.targetL)) : 1;
     const lab = this._rt(w, h), rgb = this._rt(w, h), out = this._rt(w, h, true);
     used.push(lab, rgb, out);
     this._pass("develop", lab, {
-      uSrc: src, uXf: I3, ...this._lookUniforms(lk, gain),
+      uSrc: src, uXf: I3, ...this._lookUniforms(lk, gain, t.meta),
       uAp0ToAp1: this.ap0ToAp1, uAp0ToSrgb: this.ap0ToSrgb, uNeutralCurve: this.neutralCurveTex,
       uGainN: gainN, uKnobs: 0, ...this._knobUniforms(),
     });

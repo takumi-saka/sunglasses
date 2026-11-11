@@ -18,6 +18,11 @@
       if (m.kind === "lut") Object.assign(p, { soften: -100, halation: -100, bloom: -100, grain: -100 });
       if (m.kind === "nograin") p.grain = -100;
       Object.assign(p, m.params || {});
+      // 確かめ用: 光の色を残す決まり（keepLight）を、描き方ごとに差し替える（null で残さない）。露光の覚えも捨てる
+      if ("keepLight" in m) {
+        for (const id of [m.core, e.coreById(m.core).sunInto]) if (id) e.coreById(id).keepLight = m.keepLight;
+        e.evCache = {};
+      }
       e.params = p;
       const t1 = performance.now();
       const r = e.renderPixels(width, { compare: m.kind === "neutral" });

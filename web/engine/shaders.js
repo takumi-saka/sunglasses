@@ -86,6 +86,8 @@ uniform vec3 uHiB;
 uniform float uNB;
 uniform mat3 uAp0ToAp1;
 uniform mat3 uAp0ToSrgb;
+uniform mat3 uKeepA; // 2026-11-11 光の色を残す行列（核ごと。残さない核と写真は、何もしない行列）
+uniform mat3 uKeepB;
 uniform sampler2D uNeutralCurve;
 uniform float uGainA;
 uniform float uGainB;
@@ -119,12 +121,12 @@ const float CENTERS[9] = float[9](25.0, 55.0, 90.0, 135.0, 190.0, 250.0, 295.0, 
 
 float cct(float v) { return v <= 0.0078125 ? 10.5402377416545 * v + 0.0729055341958355 : (log2(v) + 9.72) / 17.52; }
 vec3 lookA(vec3 ap0) {
-  vec3 v = max(uAp0ToAp1 * ap0 * uGainA, 0.0);
+  vec3 v = max(uAp0ToAp1 * (uKeepA * ap0) * uGainA, 0.0);
   vec3 t = clamp((vec3(cct(v.r), cct(v.g), cct(v.b)) - uLoA) / (uHiA - uLoA), 0.0, 1.0);
   return clamp(texture(uLutA, (t * (uNA - 1.0) + 0.5) / uNA).rgb, 0.0, 1.0);
 }
 vec3 lookB(vec3 ap0) {
-  vec3 v = max(uAp0ToAp1 * ap0 * uGainB, 0.0);
+  vec3 v = max(uAp0ToAp1 * (uKeepB * ap0) * uGainB, 0.0);
   vec3 t = clamp((vec3(cct(v.r), cct(v.g), cct(v.b)) - uLoB) / (uHiB - uLoB), 0.0, 1.0);
   return clamp(texture(uLutB, (t * (uNB - 1.0) + 0.5) / uNB).rgb, 0.0, 1.0);
 }
