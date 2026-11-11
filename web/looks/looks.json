@@ -24,12 +24,14 @@
     "target": 32,
     "whiteRank": 97,
     "whiteRange": [
-     72,
+     80,
      90
     ],
-    "liftLimit": 12,
+    "liftLimit": 30,
+    "tapLiftLimit": 12,
     "dropLimit": 12,
-    "liftWhole": true
+    "whiteNoSky": true,
+    "skyCap": 50
    },
    "keepLight": {
     "from": 0.8,
@@ -474,12 +476,14 @@
     "target": 32,
     "whiteRank": 97,
     "whiteRange": [
-     72,
+     80,
      90
     ],
-    "liftLimit": 12,
+    "liftLimit": 30,
+    "tapLiftLimit": 12,
     "dropLimit": 12,
-    "liftWhole": true
+    "whiteNoSky": true,
+    "skyCap": 50
    },
    "keepLight": {
     "from": 0.8,

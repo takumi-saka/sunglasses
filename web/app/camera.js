@@ -839,7 +839,8 @@ export class Camera {
   baseGain(core) {
     if (this.base[core.id] === undefined) {
       const gray = new Float32Array(48).fill(0.18);
-      const ev = C.coreEv(gray, 0.18, core, this.engine);
+      // 重みを渡すのは、輪の 0 の位置を、ふつうの景色で 0 付近のままにするため（重みなしだと、均一な灰色は「白が足りない画」として大きく上がる）
+      const ev = C.coreEv(gray, 0.18, core, this.engine, new Float32Array(16).fill(1));
       this.base[core.id] = Math.pow(2, ev);
     }
     return this.base[core.id];

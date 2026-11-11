@@ -205,40 +205,70 @@ function histAt(hist, q) {
   }
   return 100;
 }
-// 空を軽く見る重み（測る画素だけ。base は、撮る画面でたたいた所を重く測る重み）
-function skyWeights(small, key, ap0ToSrgb, curve, skyWeight, base) {
-  const g = 0.18 / key, n = small.length / 3, w = new Float32Array(Math.ceil(n / METER_STEP));
+// 空の度合い（測る画素だけ）。sky＝青くて明るい所、deep＝そのうち色の濃い所（深い青空）
+function skyParts(small, key, ap0ToSrgb, curve, deepFrom = 16, deepWidth = 10) {
+  const g = 0.18 / key, n = small.length / 3, k = Math.ceil(n / METER_STEP);
+  const sky = new Float32Array(k), deep = new Float32Array(k);
   const c01 = (v) => clamp(v, 0, 1);
+  let deepSum = 0, skySum = 0;
   for (let i = 0, j = 0; i < n; i += METER_STEP, j++) {
     const o = neutralPixel(ap0ToSrgb, curve, small[i * 3] * g, small[i * 3 + 1] * g, small[i * 3 + 2] * g);
     const [L, a, b] = rgb2lab(o[0], o[1], o[2]);
     const hue = ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360, chroma = Math.hypot(a, b);
-    const sky = c01((hue - 185) / 30) * c01((310 - hue) / 20) * c01((chroma - 6) / 6) * c01((L - 30) / 15);
-    w[j] = (1 - (1 - skyWeight) * sky) * (base ? base[i] : 1);
+    sky[j] = c01((hue - 185) / 30) * c01((310 - hue) / 20) * c01((chroma - 6) / 6) * c01((L - 30) / 15);
+    deep[j] = sky[j] * c01((chroma - deepFrom) / deepWidth);
+    skySum += sky[j];
+    deepSum += deep[j];
   }
-  return w;
+  return { sky, deep, skyShare: skySum / k, deepShare: deepSum / k };
 }
 // 核の露光量（段）。env は { ap0ToAp1, ap0ToSrgb, neutralCurve, targetL }（engine をそのまま渡せる）
+// 2026-11-11 本人の写真 43 枚と Chromagraph の作例 30 枚で決まりを直した（パソコンの道具 cinema_fit.meter と同じ）:
+//   Chromagraph は、真ん中の明るさ（1〜64 でばらばら）ではなく、明るい所（ほぼ 72〜93）をそろえて置いている。
+//   ・白が足りない時（whiteNoSky: 空を除いた上の方が whiteRange[0] に届かない）は、届くまで上げる。
+//     止める所: 真ん中が target + liftLimit、画面全体の上の方が whiteRange[1]、深い青空の真ん中が skyCap（深い青空が画の skyCapShare 以上ある時）
+//     （白い猫・明るい壁・かすんだ空のように、明るい物が大半の画が、灰色に沈まないようにする。深い青空は深いまま残す）
+//   ・白が高すぎる時は whiteRange[1] まで下げる。底は target - dropLimit。
+//     dropSmallLights（今は使っていない。夕焼けを背にした人や窓のある店と見分けがつかず、暗くしすぎた）があれば、底まで下げても上から (100 - rank)% の所が暗い画（明るいのは小さな光だけ＝夜の店・夜の街）は、target - limit まで下げる
 export function coreEv(small, key, core, env, weights = null) {
   const m = core.meter;
   if (!m) return searchEv((e) => medianCore(small, key, e, core.cpu, env.ap0ToAp1, weights), env.targetL + core.lift);
-  const w = skyWeights(small, key, env.ap0ToSrgb, env.neutralCurve, m.skyWeight ?? 1, weights);
-  const mid = (e) => histAt(meterHist(small, key, e, core.cpu, env.ap0ToAp1, w), 0.5);
-  const top = (e) => histAt(meterHist(small, key, e, core.cpu, env.ap0ToAp1, null), (m.whiteRank ?? 97) / 100);
+  const P = skyParts(small, key, env.ap0ToSrgb, env.neutralCurve, m.skyDeep?.[0], m.skyDeep?.[1]);
+  const k = P.sky.length, sw = m.skyWeight ?? 1;
+  const w = new Float32Array(k);
+  for (let j = 0; j < k; j++) w[j] = (1 - (1 - sw) * P.sky[j]) * (weights ? weights[j * METER_STEP] : 1);
+  const at = (ww, q) => (e) => histAt(meterHist(small, key, e, core.cpu, env.ap0ToAp1, ww), q);
+  const rank = (m.whiteRank ?? 97) / 100;
+  const mid = at(w, 0.5), top = at(null, rank);
   const ev = searchEv(mid, m.target);
   if (!m.whiteRange) return ev;
-  const t = top(ev);
-  if (t > m.whiteRange[1]) return Math.max(searchEv(top, m.whiteRange[1]), searchEv(mid, m.target - (m.dropLimit ?? 100)));
-  if (t < m.whiteRange[0]) {
-    let up = Math.min(searchEv(top, m.whiteRange[0]), searchEv(mid, m.target + (m.liftLimit ?? 100)));
-    if (m.liftWhole) {
-      // 2026-11-11 足した。白のために上げる時は、空を軽く見ない「画面全体の真ん中の明るさ」も target + liftLimit で止める。
-      // 青空が大半の景色で、地面に合わせて上げると空が明るくなりすぎ、深い青がクリーム色にくすむ
-      // （Chromagraph の作り手本人たちの作例は、空を明るさ 41〜46 に置いて地面を暗く落としている）
-      const wAll = skyWeights(small, key, env.ap0ToSrgb, env.neutralCurve, 1, weights);
-      const midAll = (e) => histAt(meterHist(small, key, e, core.cpu, env.ap0ToAp1, wAll), 0.5);
-      up = Math.min(up, searchEv(midAll, m.target + (m.liftLimit ?? 100)));
+  const [lo, hi] = m.whiteRange;
+  if (top(ev) > hi) {
+    let drop = m.dropLimit ?? 100;
+    const s = m.dropSmallLights;
+    if (s) {
+      const p = at(null, s.rank / 100)(searchEv(mid, m.target - drop));
+      drop += (s.limit - drop) * clamp((s.from - p) / (s.from - s.to), 0, 1);
     }
+    return Math.max(searchEv(top, hi), searchEv(mid, m.target - drop));
+  }
+  let topN = top;
+  if (m.whiteNoSky && P.skyShare < 0.97) {
+    const wn = new Float32Array(k);
+    for (let j = 0; j < k; j++) wn[j] = 1 - P.sky[j];
+    topN = at(wn, rank);
+  }
+  if (topN(ev) < lo) {
+    // 撮る画面でたたいた所を重く測る時（weights あり）は、本人が明るさを指定しているので、上げ幅を tapLiftLimit にとどめる
+    const lift = weights && m.tapLiftLimit != null ? m.tapLiftLimit : m.liftLimit ?? 100;
+    let up = Math.min(searchEv(topN, lo), searchEv(mid, m.target + lift));
+    if (topN !== top) up = Math.min(up, searchEv(top, hi));
+    if (m.liftWhole) {
+      // 前の決まり（シネマ10）。空を軽く見ない「画面全体の真ん中の明るさ」も target + liftLimit で止める
+      const one = new Float32Array(k).fill(1);
+      up = Math.min(up, searchEv(at(one, 0.5), m.target + lift));
+    }
+    if (m.skyCap && P.deepShare >= (m.skyCapShare ?? 0.1)) up = Math.min(up, searchEv(at(P.deep, 0.5), m.skyCap));
     return Math.max(ev, up);
   }
   return ev;
