@@ -22,7 +22,7 @@ const trashIcon = () => {
   return svg;
 };
 
-function mergeParams(saved) {
+export function mergeParams(saved) {
   const p = defaultParams();
   const walk = (dst, src) => {
     for (const [k, v] of Object.entries(src || {})) {
@@ -85,6 +85,7 @@ export class Editor {
     this.item = item;
     this.key = bridge.keyOf(item);
     this.ready = false;
+    this.loading = true; // 新しい写真がエンジンに入るまで。その間に描かれるのは前の写真なので、表に出さない（2026-11-13）
     this.root.hidden = false;
     this.root.classList.remove("is-full");
     this.updateLand();
@@ -95,8 +96,12 @@ export class Editor {
     this.engine.canvas.style.opacity = "0";
     this.preview.style.setProperty("--rot", "0deg");
     this.preview.classList.remove("is-turned");
+    // 仮の画は、読み込めてから出す（読み込むまでのあいだ、前の写真の仮の画が残って見えるため）
+    this.preview.hidden = true;
+    this.preview.onload = () => {
+      if (this.item === item && !this.ready) this.preview.hidden = false;
+    };
     this.preview.src = thumbSrc || "";
-    this.preview.hidden = !thumbSrc;
     this.setBadge("現像しています…", true);
     this.resize();
     const saved = await getEdit(this.key);
@@ -121,9 +126,10 @@ export class Editor {
       } else {
         await this.engine.openRaw(buf, {
           onThumb: (jpg, flip) => {
-            if (this.item !== item || this.ready) return;
+            // 一覧の小さな画（ルックも編集もかかっている）が出ている時は、差し替えない（見た目が 2 回切り替わるため）。
+            // 差し替える時は、いったん隠してから向きと画を入れ、読み込めたら出す（前の画が新しい向きで一瞬出るため）
+            if (this.item !== item || this.ready || !this.preview.hidden) return;
             this.preview.src = URL.createObjectURL(new Blob([jpg], { type: "image/jpeg" }));
-            this.preview.hidden = false;
             const deg = FLIP_DEG[flip] || 0;
             this.preview.style.setProperty("--rot", deg + "deg");
             this.preview.classList.toggle("is-turned", Math.abs(deg) === 90);
@@ -132,6 +138,7 @@ export class Editor {
       }
       if (this.item !== item) return;
       this.engine.setParams(this.params);
+      this.loading = false;
       this.coreThumbsDirty = true;
       if (this.group === "core") this.renderPanel();
     } catch (e) {
@@ -164,7 +171,7 @@ export class Editor {
   }
 
   rendered({ layout, hist }) {
-    if (!this.item) return;
+    if (!this.item || this.loading) return;
     if (!this.ready) {
       this.ready = true;
       this.engine.canvas.style.opacity = "1";

@@ -2,6 +2,7 @@
 import * as bridge from "./bridge.js";
 import { deleteEdit, editedKeys, getEdit } from "./store.js";
 import { h, toast } from "./ui.js";
+import { mergeParams } from "./editor.js";
 
 const THUMB_CACHE = "sg-thumbs-v2"; // v2: RAW から作る形に変えた（2026-11-05）
 const LONG_PRESS_MS = 400; // Android の長押しの標準（ViewConfiguration.getLongPressTimeout の既定）
@@ -249,7 +250,10 @@ export class Library {
     const edit = this.edited.has(key) ? await getEdit(key) : null;
     const ep = (edit && edit.params) || {};
     const look = ep.core === "weak" ? { core: "aftersun", sunLevel: 50 } : { core: ep.core || AUTO_CORE, sun: ep.sun || null, sunLevel: ep.sunLevel ?? ep.strength ?? (ep.core ? 100 : AUTO_SUN) };
-    const ck = `${key}:${look.core}:${Math.round(look.sunLevel)}${look.sun ? ":" + look.sun : ""}`; // sun = Cinema に足した Aftersun の種類（2026-11-13）
+    let ck = `${key}:${look.core}:${Math.round(look.sunLevel)}${look.sun ? ":" + look.sun : ""}`; // sun = Cinema に足した Aftersun の種類（2026-11-13）
+    // 編集した写真は、つまみの値も小さな画にかける。覚えておく画の名前には、編集を保存した時刻を付ける（編集し直したら作り直す）
+    const params = edit && edit.params ? mergeParams(edit.params) : null;
+    if (params) ck += `:e${edit.updatedAt || 0}`;
     if (this.urls.has(ck)) return this.urls.get(ck);
     const req = new Request(new URL(`thumb/${encodeURIComponent(ck)}.jpg`, document.baseURI));
     let cache = null;
@@ -268,7 +272,7 @@ export class Library {
     if (!res.ok) throw new Error("raw");
     const t = await this.engine.decodeThumb(await res.arrayBuffer(), 384);
     const cv = document.createElement("canvas");
-    this.engine.renderThumb(t, look, cv);
+    this.engine.renderThumb(t, look, cv, params);
     const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.86));
     if (cache) cache.put(req, new Response(blob, { headers: { "Content-Type": "image/jpeg" } })).catch(() => {});
     const u = URL.createObjectURL(blob);

@@ -580,8 +580,7 @@ export class Engine {
     return out;
   }
 
-  _knobUniforms() {
-    const P = this.params;
+  _knobUniforms(P = this.params) {
     const ck = JSON.stringify(P.curve);
     if (ck !== this.curveKey) {
       this.curveKey = ck;
@@ -719,7 +718,9 @@ export class Engine {
 
   // ---------- 一覧の小さな画（RAW から作った小さな光の量の画に、核だけをかける）----------
   // look は { core, sunLevel }（核の名前だけを渡すと Sun Level 100）
-  renderThumb(t, look, canvas) {
+  // params（編集したつまみの値の全部）を渡すと、色と明るさのつまみ・白黒もかける（2026-11-13。一覧の画が編集前のままだった）。
+  // 切り抜き・粒・にじみなどは、小さな画ではかけない
+  renderThumb(t, look, canvas, params = null) {
     const lk = this.lookFor(typeof look === "string" ? { core: look === "weak" ? "aftersun" : look, sunLevel: look === "weak" ? 50 : 100 } : look);
     const gl = this.gl, w = t.tw, h = t.th, used = [];
     const up = gl.createTexture();
@@ -730,17 +731,18 @@ export class Engine {
       [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
     const src = { tex: up };
     const { small, key } = t;
-    const gain = (c) => (0.18 / key) * Math.pow(2, C.coreEv(this._smallFor(c, small, t.meta), key, c, this, null, C.sceneOf(t.meta, key)));
-    const gainN = lk.wN > 0 ? (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianNeutral(small, key, e, this.ap0ToSrgb, this.neutralCurve), this.targetL)) : 1;
+    const ex = params ? Math.pow(2, params.exposure || 0) : 1;
+    const gain = (c) => ex * (0.18 / key) * Math.pow(2, C.coreEv(this._smallFor(c, small, t.meta), key, c, this, null, C.sceneOf(t.meta, key)));
+    const gainN = lk.wN > 0 ? ex * (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianNeutral(small, key, e, this.ap0ToSrgb, this.neutralCurve), this.targetL)) : 1;
     const lab = this._rt(w, h), rgb = this._rt(w, h), out = this._rt(w, h, true);
     used.push(lab, rgb, out);
     this._pass("develop", lab, {
       uSrc: src, uXf: I3, ...this._lookUniforms(lk, gain, t.meta),
       uAp0ToAp1: this.ap0ToAp1, uAp0ToSrgb: this.ap0ToSrgb, uNeutralCurve: this.neutralCurveTex,
-      uGainN: gainN, uKnobs: 0, ...this._knobUniforms(),
+      uGainN: gainN, uKnobs: params ? 1 : 0, ...this._knobUniforms(params || this.params),
     });
     this._pass("finish", rgb, { uLab: lab, uNoise: lab, uGrainOn: 0, uGrainAmp: 0, uVignette: 0, uToCrop: I3 });
-    this._pass("final", out, { uRgb: rgb, uGlow: rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: 0, uClip: 0 });
+    this._pass("final", out, { uRgb: rgb, uGlow: rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0 });
     const px = new Uint8ClampedArray(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
     this._release(used);
