@@ -143,7 +143,7 @@ vec3 knobs(vec3 lab) {
   x = x + uHighlights / 100.0 * 0.15 * sin(PI * clamp((x - 0.5) / 0.5, 0.0, 1.0));
   x = x + uShadows / 100.0 * 0.15 * sin(PI * clamp(x / 0.5, 0.0, 1.0));
   float y = 1.0 - x;
-  x = clamp(x + uWhites / 100.0 * 0.12 * x * x * x * x + uBlacks / 100.0 * 0.12 * y * y * y * y, 0.0, 1.0);
+  x = clamp(x + uWhites / 100.0 * 0.25 * x * x * x + uBlacks / 100.0 * 0.12 * y * y * y * y, 0.0, 1.0);
   float k = 0.3 + 0.7 * x;
   vec3 rgb = lab2rgb(vec3(x * 100.0, lab.y + uTint / 100.0 * 12.0 * k, lab.z + uTemp / 100.0 * 12.0 * k));
   float d = uDehaze / 100.0 * 0.4;
