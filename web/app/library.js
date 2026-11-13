@@ -3,6 +3,7 @@ import * as bridge from "./bridge.js";
 import { deleteEdit, editedKeys, getEdit } from "./store.js";
 import { h, toast } from "./ui.js";
 import { mergeParams } from "./editor.js";
+import { water } from "./water.js";
 
 const THUMB_CACHE = "sg-thumbs-v2"; // v2: RAW から作る形に変えた（2026-11-05）
 const LONG_PRESS_MS = 400; // Android の長押しの標準（ViewConfiguration.getLongPressTimeout の既定）
@@ -23,6 +24,12 @@ export class Library {
     this.queue = [];
     this.busy = false;
     document.getElementById("lib-open").onclick = () => this.openFile();
+    // 写真の上に浮かぶ所は、水の部品にする（2026-11-13）
+    water(document.getElementById("lib-brand"));
+    water(document.getElementById("lib-open"));
+    water(document.getElementById("lib-camera"));
+    water(document.getElementById("lib-camera-core"), { kind: "white" });
+    water(document.getElementById("lib-select"));
     // 写真を選んでまとめて消す（長押しで選ぶ形に入る。2026-11-06）
     this.selecting = false;
     this.selected = new Set();
