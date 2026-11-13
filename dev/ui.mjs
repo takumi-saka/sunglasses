@@ -72,6 +72,29 @@ for (const [name, file] of [["ルック", "04_ルック"], ["ライト", "05_ラ
   await tab(name);
   if (name === "ルック") await page.waitForTimeout(1200);
   await shot(file);
+  if (name === "ルック") {
+    // 2026-11-13 Cinema のオン・オフと、足す Aftersun（なし／Aftersun／Blue／Aqua）
+    const state = () => page.evaluate(() => ({
+      上の名前: document.querySelector(".core-chip")?.textContent, 箱: [...document.querySelectorAll(".core-box .core-name")].map((e) => e.textContent),
+      印: document.querySelector(".core-box.is-on .core-name")?.textContent, Cinema: document.querySelector(".toggle-row .toggle")?.checked,
+      つまみ: [...document.querySelectorAll("#panel .sl, .panel .sl")].length,
+    }));
+    const pick = async (i) => { await page.locator(".core-box >> nth=" + i).click(); await page.waitForTimeout(900); };
+    const looks = { はじめ: await state() };
+    await pick(2);
+    looks.Blueを足した = await state();
+    await shot("04b_ルック_CinemaとBlue");
+    await page.locator(".toggle-row .toggle").click();
+    await page.waitForTimeout(900);
+    looks.Cinemaをオフ = await state();
+    await shot("04c_ルック_Blueだけ");
+    await pick(0);
+    looks.どちらもなし = await state();
+    await page.locator(".toggle-row .toggle").click();
+    await page.waitForTimeout(900);
+    looks.Cinemaに戻した = await state();
+    log.push(["ルックの切り替え", looks]);
+  }
 }
 
 // つまみを動かす（よく使う → 露光量を右へ）

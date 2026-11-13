@@ -1,7 +1,7 @@
 // 編集の画面（2026-11-05）。
 // 写真の上: 押している間は元の画、2 回たたくと全画面、2 本指でつまむと拡大、拡大中は 1 本指で動かす。
 // 下の板: 核の箱・つまみ（よく使う／明るさ／色／色ごと／グレーディング／効果／細部／切り抜き）。
-import { defaultParams, isSunMix, sunCoreOf, sunDefaultOf, sunGainOf } from "../engine/engine.js";
+import { defaultParams, lookParams, lookState, sunCoreOf, sunGainOf, SUN_CORES } from "../engine/engine.js";
 import { shotInfo } from "../engine/exif.js";
 import * as bridge from "./bridge.js";
 import { cropForAspect, panCrop, rotateCrop, zoomCrop } from "./crop.js";
@@ -404,8 +404,8 @@ export class Editor {
   // ---------- 下の板 ----------
   groupChanged(g) {
     const p = this.params;
-    // 「よく使う」には、ルックの強さのつまみ（Cinema では Aftersun）も置いてある
-    const sunMoved = g.id === "basic" && (p.sunLevel ?? sunDefaultOf(this.engine.coreById(p.core))) !== sunDefaultOf(this.engine.coreById(p.core));
+    // 「よく使う」には、足した Aftersun の強さのつまみ（Sun Level。はじめは 100）も置いてある
+    const st = lookState(p), sunMoved = g.id === "basic" && !!st.sun && Math.round(st.level) !== 100;
     if (g.knobs) return sunMoved || g.knobs.some((k) => changed(p, k)) || (g.curve && (Object.values(p.curve).some((c) => c && c.length) || Object.values(p.param).some((v) => v))) || (g.bw && p.bw);
     if (g.id === "core") return p.core !== AUTO_CORE || (p.sunLevel ?? AUTO.sunLevel) !== AUTO.sunLevel;
     if (g.id === "mix") return ["hue", "sat", "lum"].some((k) => p.hsl[k].some((v) => v));
@@ -419,12 +419,12 @@ export class Editor {
       class: "tab" + (g.id === this.group ? " is-on" : "") + (this.params && this.groupChanged(g) ? " is-changed" : ""),
       onClick: () => this.showGroup(g.id),
     }, g.name)));
-    const core = this.engine.coreById(this.params ? this.params.core : AUTO_CORE);
-    // 上のルック名: Cinema に Aftersun を足しているときは、足した量も出す（例: Cinema ＋ Aftersun 40）。「自動」は、何も選んでいないときだけ
-    const p = this.params;
-    const sun = p && isSunMix(core) ? Math.round(p.sunLevel ?? sunDefaultOf(core)) : 0;
-    const auto = p && p.core === AUTO_CORE && sun === AUTO.sunLevel;
-    this.coreChip.replaceChildren(h("small", {}, "ルック"), h("b", {}, core.name), sun > 0 ? h("span", { class: "plus" }, `＋ Aftersun ${sun}`) : "", auto ? h("span", { class: "auto" }, "自動") : "");
+    // 上のルック名: Cinema に Aftersun を足しているときは、足した物と量も出す（例: Cinema ＋ Aftersun Blue 40）。「自動」は、何も選んでいないときだけ
+    const p = this.params, st = lookState(p || AUTO);
+    const sunName = st.sun ? this.engine.coreById(st.sun).name : "";
+    const auto = p && p.core === AUTO_CORE && !st.sun;
+    this.coreChip.replaceChildren(h("small", {}, "ルック"), h("b", {}, st.cinema ? "Cinema" : sunName || "なし"),
+      st.cinema && st.sun ? h("span", { class: "plus" }, `＋ ${sunName} ${Math.round(st.level)}`) : "", auto ? h("span", { class: "auto" }, "自動") : "");
   }
 
   showGroup(id) {
@@ -452,7 +452,7 @@ export class Editor {
     const g = GROUPS.find((x) => x.id === this.group) || GROUPS[1];
     const body = [];
     if (g.id === "core") body.push(...this.corePanel());
-    if (g.id === "basic") body.push(this.sunKnob()); // よく使うの一番上に、ルックの強さ（Cinema では Aftersun を足す量）
+    if (g.id === "basic") body.push(...[this.sunKnob()].filter(Boolean)); // よく使うの一番上に、足した Aftersun の強さ（足していない時は出さない）
     if (g.knobs) body.push(...g.knobs.map((k) => this.knob(k)));
     if (g.curve) body.push(...this.curvePanel());
     if (g.bw) {
@@ -468,25 +468,32 @@ export class Editor {
     this.panel.scrollTop = 0;
   }
 
+  // ルックの板（2026-11-13 本人の案。仮の形で、見た目はデザインの作り直しの時に整える）:
+  // Cinema のオン・オフ ＋ 足す Aftersun（なし／Aftersun／Blue／Aqua）＋ その強さ（Sun Level）
   corePanel() {
-    const boxes = this.engine.cores.filter((c) => c.id !== "weak" && !c.hidden).map((c) => {
+    const st = lookState(this.params);
+    const apply = (cinema, sun, level) => {
+      for (const [k, v] of Object.entries(lookParams(cinema, sun, level))) this.setParam(k, v);
+      this.commit();
+      bridge.haptic("tick");
+      this.renderTabs();
+      this.renderPanel();
+    };
+    const cinemaRow = h("label", { class: "toggle-row" }, h("span", {}, "Cinema"), h("input", {
+      type: "checkbox", class: "toggle", checked: st.cinema ? "checked" : null,
+      onChange: (e) => apply(e.target.checked, st.sun, st.level),
+    }));
+    // 前に直した写真が、一覧から外したルック（Nostalgia など）のままなら、その箱も出す（選び直すまでそのまま使える）
+    const ids = [null, ...SUN_CORES, ...(st.sun && !SUN_CORES.includes(st.sun) ? [st.sun] : [])];
+    const boxes = ids.map((id) => {
       const cv = h("canvas", { class: "core-cv" });
-      const [c1, c2] = CORE_BANDS[c.id] || ["#555", "#999"];
+      const [c1, c2] = (id && CORE_BANDS[id]) || ["#555", "#999"];
       const box = h("button", {
-        class: "core-box" + (c.id === this.params.core ? " is-on" : ""), style: { "--c1": c1, "--c2": c2 },
-        onClick: () => {
-          if (this.params.core === c.id) return;
-          // Cinema とほかのルックでは Sun Level の意味が違うので、行き来するときは、そのルックのはじめの値にする
-          const from = this.engine.coreById(this.params.core);
-          this.setParam("core", c.id);
-          if (isSunMix(from) !== isSunMix(c)) this.setParam("sunLevel", sunDefaultOf(c));
-          this.commit();
-          bridge.haptic("tick");
-          this.renderPanel();
-        },
-      }, h("div", { class: "core-window" }, cv), h("div", { class: "core-band" }), h("div", { class: "core-name" }, c.name),
-      c.id === AUTO_CORE ? h("div", { class: "core-auto" }, "自動") : h("div", { class: "core-auto" }, ""));
-      box.dataset.core = c.id;
+        class: "core-box" + (id === st.sun ? " is-on" : ""), style: { "--c1": c1, "--c2": c2 },
+        onClick: () => id !== st.sun && apply(st.cinema, id, st.sun && st.level > 0 ? st.level : 100), // なしから選んだ時は 100 から
+      }, h("div", { class: "core-window" }, cv), h("div", { class: "core-band" }), h("div", { class: "core-name" }, id ? this.engine.coreById(id).name : "なし"),
+      h("div", { class: "core-auto" }, ""));
+      box.dataset.sun = id || "";
       return box;
     });
     const row = h("div", { class: "cores" }, boxes);
@@ -498,22 +505,27 @@ export class Editor {
       else if (on) row.scrollLeft = Math.max(0, on.getBoundingClientRect().left - row.getBoundingClientRect().left + row.scrollLeft - (row.clientWidth - on.offsetWidth) / 2);
       this.drawCoreThumbs(row);
     });
-    const core = this.engine.coreById(this.params.core), name = core.name, sc = sunCoreOf(core);
-    // 2026-11-10 核ごとの強さ。型のフィルムは 100 が核そのもの（止まる所なし）
-    if (isSunMix(core)) {
-      // Cinema: つまみは「Aftersun をどれだけ足すか」
-      const mixNote = h("p", { class: "note" }, `Aftersun は、0 で ${name} そのまま。上げるほど、空が深い青に、色が濃くなります（映画 Aftersun の色）。`);
-      return [row, this.sunKnob(), mixNote];
-    }
-    const note = h("p", { class: "note" }, sc >= 100 ? `Sun Level は、0 で素の画、100 で ${name} そのまま。`
-      : `Sun Level は、0 で素の画、${sc} で ${name} そのまま、100 でその ${sunGainOf(core)} 倍。${sc} で軽く止まります。`);
-    return [row, this.sunKnob(), note];
+    const head = h("p", { class: "note" }, "Aftersun を足す");
+    if (!st.sun) return [cinemaRow, head, row, h("p", { class: "note" }, st.cinema ? "Cinema だけの画です。" : "ルックなし（素の画）です。")];
+    const core = this.engine.coreById(st.sun), name = core.name, sc = sunCoreOf(core);
+    const note = st.cinema ? `Sun Level は、0 で Cinema そのまま、100 で ${name} の色。明るさ・明暗は Cinema のままです。`
+      : sc >= 100 ? `Sun Level は、0 で素の画、100 で ${name} そのまま。`
+        : `Sun Level は、0 で素の画、${sc} で ${name} そのまま、100 でその ${sunGainOf(core)} 倍。${sc} で軽く止まります。`;
+    return [cinemaRow, head, row, this.sunKnob(), h("p", { class: "note" }, note)];
   }
 
-  // ルックの強さのつまみ。Cinema では「Aftersun をどれだけ足すか」（0 がはじめの値）、ほかのルックでは Sun Level
+  // 足した Aftersun の強さのつまみ（Sun Level）。足していない時は null
   sunKnob() {
-    const core = this.engine.coreById(this.params.core), sc = sunCoreOf(core);
-    return isSunMix(core) ? this.knob("sunLevel", { label: "Aftersun", def: sunDefaultOf(core) }) : this.knob("sunLevel", { snaps: sc < 100 ? [sc] : [] });
+    const st = lookState(this.params);
+    if (!st.sun) return null;
+    const sc = sunCoreOf(this.engine.coreById(st.sun));
+    return this.knob("sunLevel", { value: st.level, def: 100, snaps: !st.cinema && sc < 100 ? [sc] : [] });
+  }
+
+  // いまのルックを言葉にする（例: Cinema ＋ Aftersun Blue 40）
+  lookLabel(p) {
+    const st = lookState(p), n = st.sun ? `${this.engine.coreById(st.sun).name} ${Math.round(st.level)}` : "";
+    return st.cinema ? (n ? `Cinema ＋ ${n}` : "Cinema") : n || "ルックなし";
   }
 
   // 核の箱の中に、いまの写真をその核で描いた小さな画を出す
@@ -524,7 +536,7 @@ export class Editor {
     }
     const keep = this.engine.params;
     for (const box of row.querySelectorAll(".core-box")) {
-      this.engine.params = { ...defaultParams(), core: box.dataset.core, sunLevel: sunDefaultOf(this.engine.coreById(box.dataset.core)), crop: keep.crop };
+      this.engine.params = { ...defaultParams(), ...lookParams(lookState(keep).cinema, box.dataset.sun || null, 100), crop: keep.crop };
       const r = this.engine.renderPixels(220);
       const cv = box.querySelector("canvas");
       cv.width = r.width;
@@ -605,7 +617,7 @@ export class Editor {
         pref("clipboard", rest);
         toast("直しをコピーしました。ほかの写真で「貼り付け」できます");
       }),
-      row("直しを貼り付け", clip ? `${this.engine.coreById(clip.core).name} ほか、コピーした値にする（切り抜きはこの写真のまま）` : "まだコピーしていません", () => {
+      row("直しを貼り付け", clip ? `${this.lookLabel(clip)} ほか、コピーした値にする（切り抜きはこの写真のまま）` : "まだコピーしていません", () => {
         this.params = { ...mergeParams(clip), crop: this.params.crop };
         this.engine.setParams(this.params);
         this.commit();
@@ -669,8 +681,8 @@ export class Editor {
     try {
       const blob = await this.engine.exportJpeg({ maxSide, quality: 0.95 });
       const name = (item.name || "photo").replace(/\.[^.]+$/, "") + "_sunglasses.jpg";
-      const p = this.params, core = this.engine.coreById(p.core);
-      const note = `Sunglasses: ${core.name} ${isSunMix(core) ? "Aftersun" : "Sun Level"} ${Math.round(p.sunLevel ?? sunDefaultOf(core))}, exposure ${p.exposure >= 0 ? "+" : ""}${p.exposure.toFixed(2)}`;
+      const p = this.params;
+      const note = `Sunglasses: ${this.lookLabel(p)}, exposure ${p.exposure >= 0 ? "+" : ""}${p.exposure.toFixed(2)}`;
       const res = await bridge.saveJpeg(blob, { name, folder: "DCIM/Camera", item, copyLocation, note });
       if (!res.ok) throw new Error(res.error || "保存できませんでした");
       bridge.haptic("confirm");

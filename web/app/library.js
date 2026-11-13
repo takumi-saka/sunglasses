@@ -248,8 +248,8 @@ export class Library {
     const key = bridge.keyOf(it);
     const edit = this.edited.has(key) ? await getEdit(key) : null;
     const ep = (edit && edit.params) || {};
-    const look = ep.core === "weak" ? { core: "aftersun", sunLevel: 50 } : { core: ep.core || AUTO_CORE, sunLevel: ep.sunLevel ?? ep.strength ?? (ep.core ? 100 : AUTO_SUN) };
-    const ck = `${key}:${look.core}:${Math.round(look.sunLevel)}`;
+    const look = ep.core === "weak" ? { core: "aftersun", sunLevel: 50 } : { core: ep.core || AUTO_CORE, sun: ep.sun || null, sunLevel: ep.sunLevel ?? ep.strength ?? (ep.core ? 100 : AUTO_SUN) };
+    const ck = `${key}:${look.core}:${Math.round(look.sunLevel)}${look.sun ? ":" + look.sun : ""}`; // sun = Cinema に足した Aftersun の種類（2026-11-13）
     if (this.urls.has(ck)) return this.urls.get(ck);
     const req = new Request(new URL(`thumb/${encodeURIComponent(ck)}.jpg`, document.baseURI));
     let cache = null;

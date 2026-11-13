@@ -149,8 +149,13 @@ await doubleTap("#cam-ev .rg", 0);
 log.二回たたいて自動へ = await page.locator(".cam-auto").getAttribute("class");
 
 // Sun Level を左へ（値が増える向き）、右へ（減る向き）。露出と Sun Level は見出しで切り替える
-// （Cinema では、つまみの名前が「Aftersun」になる）
-await page.locator(".cam-tab:visible", { hasText: /Sun Level|Aftersun/ }).click();
+// 2026-11-13 Sun Level の輪は、Aftersun を足している時だけ出る。先に、ルックの一覧から Aftersun Blue を足す
+log.はじめのルック = { 名前: await page.locator("#cam-core b").textContent(), SunLevelの見出しが隠れている: await page.locator(".cam-tab", { hasText: "Sun Level" }).first().evaluate((el) => el.hidden) };
+await page.locator("#cam-core").click();
+await page.waitForTimeout(300);
+await page.locator(".cam-look", { hasText: "Aftersun Blue" }).click();
+await page.waitForTimeout(600);
+await page.locator(".cam-tab:visible", { hasText: "Sun Level" }).click();
 await page.waitForTimeout(200);
 log.切り替えたあとの輪 = await page.evaluate(() => [...document.querySelectorAll("#cam-ev .rg")].map((r) => r.getAttribute("aria-label") + (r.hidden ? "（隠れている）" : "（出ている）")));
 await clear();
@@ -247,15 +252,32 @@ await clear();
 await page.mouse.click(60, 200);
 await page.waitForTimeout(300);
 log.外をたたいた = { 一覧は閉じた: await page.locator("#cam-looks").evaluate((el) => el.hidden), ルック: await page.locator("#cam-core b").textContent(), ピントの呼び出し: (await calls("focus")).length };
-// もう一度出して、4 番目（名前が長いルック）を選ぶ
+// もう一度出して、5 番目（Aftersun Aqua。名前が長くなる）を選ぶ
 await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
 await page.waitForTimeout(300);
-await page.locator(".cam-look >> nth=3").click();
+await page.locator(".cam-look >> nth=4").click();
 await page.waitForTimeout(600);
 log.選んだあとのルック = { 名前: await page.locator("#cam-core b").textContent(), 一覧は閉じた: await page.locator("#cam-looks").evaluate((el) => el.hidden), 長い名前の印: await page.locator("#cam-core").evaluate((el) => el.classList.contains("is-long")), 重み: (await calls("w")).slice(-1) };
 const cb2 = await page.locator("#cam-core").boundingBox(), sb = await page.locator("#cam-shutter").boundingBox();
 log.ルック名とシャッターのすき間 = Math.round(cb2.x - (sb.x + sb.width));
 await shot("c7_あと");
+// 2026-11-13 Cinema をオフ（一覧は開いたまま）→ なし（ルックなし）→ Cinema をオン・Aftersun Aqua に戻す
+await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+await page.waitForTimeout(300);
+await page.locator(".cam-look >> nth=0").click();
+await page.waitForTimeout(600);
+log.Cinemaをオフ = { 名前: await page.locator("#cam-core b").textContent(), 一覧は開いたまま: !(await page.locator("#cam-looks").evaluate((el) => el.hidden)), 並び: await page.locator(".cam-look").allTextContents(), 重み: (await calls("w")).slice(-1) };
+await page.locator(".cam-look >> nth=1").click();
+await page.waitForTimeout(600);
+log.どちらもなし = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1), SunLevelの見出しが隠れている: await page.locator(".cam-tab", { hasText: "Sun Level" }).first().evaluate((el) => el.hidden) };
+await shot("c7b_ルックなし");
+await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+await page.waitForTimeout(300);
+await page.locator(".cam-look >> nth=0").click();
+await page.waitForTimeout(600);
+await page.locator(".cam-look >> nth=4").click();
+await page.waitForTimeout(600);
+log.戻したあと = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1) };
 // 横に倒したときの一覧
 await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 90 } })));
 await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);

@@ -373,11 +373,18 @@ void main() {
   }
   o = vec4(c, 1.0);
 }`);
+// 2026-11-13 白みのもとを 2 つに分けた: ルックが元から持つ分（uBase。明るさ 0.55 を超えた分）と、つまみで足した分
+// （uAdd。明るさ uFrom を超えた分）。白を低く止めるルック（新しい Aftersun）では 0.55 を超える所がほとんど無く、
+// つまみを上げても白みが増えなかったので、足した分はもっと低い明るさ（looks.json の knobRef.bloomFrom）からかかるようにした。
+// 量はここで掛けておく（仕上げの uBloom は 1）。uFrom が 0.55 のルックは、前と同じ画
 export const FS_BLOOM_SRC = fs(`
 uniform sampler2D uRgb;
+uniform float uBase;
+uniform float uAdd;
+uniform float uFrom;
 void main() {
   float y = dot(texture(uRgb, vUv).rgb, vec3(0.2126, 0.7152, 0.0722));
-  o = vec4(vec3(max(y - 0.55, 0.0)), 1.0);
+  o = vec4(vec3(uBase * max(y - 0.55, 0.0) + uAdd * max(y - uFrom, 0.0)), 1.0);
 }`);
 
 // 仕上げ: 白みを足す → 0〜1 に収める → 白黒 → 白飛び・黒つぶれの印

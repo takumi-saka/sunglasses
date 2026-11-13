@@ -23,6 +23,40 @@ export const sunCoreOf = (core) => Math.round(100 / sunGainOf(core));
 export const sunDefaultOf = (core) => (core && core.sunDefault !== undefined ? core.sunDefault : 100);
 export const isSunMix = (core) => !!(core && core.sunInto);
 
+// 2026-11-13 ルックの形を「Cinema のオン・オフ」と「足す Aftersun（なし／Aftersun／Blue／Aqua）とその強さ」に分けた（本人の案）。
+// 保存する値は前と同じ core・sunLevel に、足す Aftersun の種類 sun を足しただけ（前に直した写真がそのまま開ける）:
+//   Cinema オン   … core "cinema"、sun = 足す Aftersun の核、sunLevel = 足す量（0 でなし）
+//   Cinema オフ   … core = Aftersun の核（sunLevel = 強さ）。どちらもなし（素の画）は core "none"
+// looks.json の Cinema の sunInto は { 足す Aftersun の核: Cinema の明暗でその色にした核 }
+export const SUN_CORES = ["aftersun3", "deepblue", "aqua"];
+export const NONE_CORE = "none";
+export const sunIntoOf = (core, sun) => {
+  const m = core && core.sunInto;
+  return !m ? null : typeof m === "string" ? m : m[sun] || m[SUN_CORES[0]];
+};
+// 値 → 画面で使う形 { cinema: Cinema がオンか, sun: 足している Aftersun の核（なしは null）, level: その強さ }
+export function lookState(p) {
+  if (p.core === "cinema") {
+    const level = p.sunLevel ?? 0;
+    return { cinema: true, sun: level > 0 ? (SUN_CORES.includes(p.sun) ? p.sun : SUN_CORES[0]) : null, level };
+  }
+  if (!p.core || p.core === NONE_CORE) return { cinema: false, sun: null, level: 0 };
+  return { cinema: false, sun: p.core, level: p.sunLevel ?? 100 };
+}
+// 画面で選んだ形 → 値。Cinema に足せるのは SUN_CORES だけ（前のルックを選んだまま Cinema をオンにしたら Aftersun にする）
+export function lookParams(cinema, sun, level) {
+  if (cinema) return sun ? { core: "cinema", sun: SUN_CORES.includes(sun) ? sun : SUN_CORES[0], sunLevel: level } : { core: "cinema", sun: null, sunLevel: 0 };
+  return sun ? { core: sun, sun: null, sunLevel: level } : { core: NONE_CORE, sun: null, sunLevel: 0 };
+}
+
+// 2026-11-13 粒子・ハレーション・白み・やわらかさのつまみの効かせ方。前は「核の量 ×（1 ＋ つまみ）」だけで、
+// 核の量が 0 のルック（Cinema の白み・粒）ではつまみが効かず、量の小さいルック（新しい Aftersun の白み 0.2）では最大でも弱かった
+// （本人「白をいじっても全然変わらない」）。下げる側は今までどおり掛け算（−100 で 0）。上げる側は、核の量と目安の量
+// （KNOB_REF。looks.json の knobRef で核ごとに変えられる）の大きいほうを 100 あたりに足す。核の量が目安以上のルックは前と同じ動き
+// bloomFrom は、つまみで足した白みがかかり始める明るさ（0〜1。shaders.js の FS_BLOOM_SRC）
+export const KNOB_REF = { grain: 3, halation: 0.2, bloom: 1, soften: 0.5, bloomFrom: 0.55 };
+export const knobAmount = (base, ref, k) => Math.max(0, k <= 0 ? base * (1 + k / 100) : base + Math.max(base, ref) * (k / 100));
+
 // 2026-11-10 明るさの段ごとの粒の量（looks.json の grainCurve）。[[明るさ 0〜1, 倍率], …] の結び目を、
 // 結び目の間は直線でつなぎ、両端の外は端の値のまま。シェーダーには明るさ 0〜1 を 32 等分した 33 点の表で渡す。
 // 書いていない核は今までの式 clamp(1.15 − l^1.5, 0.2, 1)（暗いほど強く、明るい所にも 0.2 残る）。
@@ -51,7 +85,7 @@ export function grainCurveTable(knots) {
 
 export function defaultParams() {
   return {
-    core: "aftersun", sunLevel: 100,
+    core: "aftersun", sunLevel: 100, sun: null,
     exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
     curve: { rgb: null, r: null, g: null, b: null },
     param: { shadows: 0, darks: 0, lights: 0, highlights: 0 },
@@ -182,11 +216,13 @@ export class Engine {
   // 核より強い所は、素の画から離れる向きに伸ばす（素の画の重みがマイナスになる）。色だけを伸ばし、粒や白みは核の量まで。
   // Aftersun+（id aftersun、最初の形）は、強さ 0.5 で弱めの核を挟む。ほかの核は、素の画からその核へなめらかに混ぜる
   lookFor(p) {
+    // どちらもなし（Cinema オフ・Aftersun なし）: 素の画
+    if (p.core === NONE_CORE) return { A: this.cores[0], wA: 0, B: null, wB: 0, wN: 1 };
     const c0 = this.coreById(p.core);
     if (c0.sunInto) {
-      // シネマ: 0 でシネマそのまま、100 で「シネマに Aftersun の色を足した核」。素の画には戻さない
+      // シネマ: 0 でシネマそのまま、100 で「シネマの明暗で、選んだ Aftersun（p.sun）の色にした核」。素の画には戻さない
       const t = C.clamp((p.sunLevel ?? sunDefaultOf(c0)) / 100, 0, 1);
-      return { A: c0, wA: 1 - t, B: this.coreById(c0.sunInto), wB: t, wN: 0 };
+      return { A: c0, wA: 1 - t, B: this.coreById(sunIntoOf(c0, p.sun)), wB: t, wN: 0 };
     }
     const s = C.clamp((p.sunLevel ?? p.strength ?? 100) / 100, 0, 1) * sunGainOf(c0);
     if (p.core !== "aftersun") return { A: this.coreById(p.core), wA: s, B: null, wB: 0, wN: 1 - s };
@@ -213,7 +249,10 @@ export class Engine {
       const old = grainCurveTable(null), wsum = parts.reduce((a, [, wt]) => a + wt, 0);
       for (const [c, wt] of parts) for (let i = 0; i < GRAIN_LUT_N; i++) grainLut[i] += ((c.grainLut || old)[i] * wt) / wsum;
     }
-    return { soften: sum("soften"), grain: sum("grain"), grainSize: avg("grainSize"), halation: sum("halation"), bloom: sum("bloom"), bloomWarm: avg("bloomWarm"),
+    // つまみを上げた時の目安の量（knobAmount）。核ごとの値（knobRef）を重みの割合で混ぜる。素の画だけの時は KNOB_REF
+    const ref = {};
+    for (const k of Object.keys(KNOB_REF)) ref[k] = tot > 0 ? parts.reduce((a, [c, wt]) => a + ((c.knobRef && c.knobRef[k]) ?? KNOB_REF[k]) * wt, 0) / tot : KNOB_REF[k];
+    return { ref, soften: sum("soften"), grain: sum("grain"), grainSize: avg("grainSize"), halation: sum("halation"), bloom: sum("bloom"), bloomWarm: avg("bloomWarm"),
       colorNoise: sum("colorNoise"), grainLut,
       // 2026-11-10 縁だけのにじみ（halationEdge）は形なので、混ぜる核のどれかにあれば使う。無い核（今の核）は 0 で今までの式のまま
       halationEdge: parts.some(([c]) => c.halationEdge) ? 1 : 0 };
@@ -488,7 +527,7 @@ export class Engine {
         this._release([b1, b2]);
         swap(o);
       }
-      const soften = core.soften * (1 + P.soften / 100);
+      const soften = knobAmount(core.soften, core.ref.soften, P.soften);
       if (soften > 0) swap(this._blur(cur, (soften * VW) / 2048));
       if (P.sharpen > 0) {
         const b = this._blur(cur, Math.max(0.7, VW / 2048)), o = rt();
@@ -497,7 +536,7 @@ export class Engine {
         swap(o);
       }
     }
-    const grain = compare ? 0 : Math.max(0, core.grain * (1 + P.grain / 100));
+    const grain = compare ? 0 : knobAmount(core.grain, core.ref.grain, P.grain);
     let noise = null, amp = 0;
     if (grain > 0) {
       const size = C.clamp(core.grainSize + P.grainSize, 0, 100);
@@ -516,7 +555,7 @@ export class Engine {
     // 係数は前の値 × 0.75（高さ ÷ 長い辺）にした
     const longSide = Math.max(VW, VH);
     if (!compare) {
-      const hal = core.halation * (1 + P.halation / 100);
+      const hal = knobAmount(core.halation, core.ref.halation, P.halation);
       if (hal > 0) {
         const s = rt();
         this._pass("halSrc", s, { uRgb: out.rgb });
@@ -527,13 +566,14 @@ export class Engine {
         this._release([g, out.rgb]);
         out.rgb = o;
       }
-      const bloom = core.bloom * (1 + P.bloom / 100);
-      if (bloom > 0) {
+      // 白み: ルックが元から持つ分と、つまみで足した分（shaders.js の FS_BLOOM_SRC）。合計は knobAmount と同じ
+      const bBase = knobAmount(core.bloom, core.ref.bloom, Math.min(P.bloom, 0)), bAdd = knobAmount(core.bloom, core.ref.bloom, P.bloom) - bBase;
+      if (bBase + bAdd > 0) {
         const s = rt();
-        this._pass("bloomSrc", s, { uRgb: out.rgb });
+        this._pass("bloomSrc", s, { uRgb: out.rgb, uBase: bBase, uAdd: bAdd, uFrom: core.ref.bloomFrom });
         out.glow = this._blurBig(s, 0.0225 * longSide);
         this._give(s);
-        out.bloom = bloom;
+        out.bloom = 1;
       }
     }
     out.used = [out.rgb, out.glow].filter(Boolean);

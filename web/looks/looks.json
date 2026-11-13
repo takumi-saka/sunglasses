@@ -5,7 +5,7 @@
   {
    "id": "cinema",
    "name": "Cinema",
-   "desc": "映画の見た目の核（2026-11-11 シネマ10）。Chromagraph Camera と純正カメラの撮り比べ 5 組に合わせ込み、作り手本人たち（Steve Yedlin と仲間）の作例 10 枚で確かめた形: 素直な現像のまま影を少し落とす、白と明るい所はクリーム色（黒は無色）、色は少し淡く、明るいかすんだ空はクリーム色に・深い青空と海は濃い青緑のまま残す。Sun Level のつまみは「Aftersun をどれだけ足すか」（0 でこの核そのまま、100 で cinemasun）。露光は meter の決まり（空を軽く見た真ん中の明るさを 32 に、白を 72〜90 に。白のために上げるのは、空を含めた画面全体の真ん中が 44 になる所まで）",
+   "desc": "映画の見た目の核（2026-11-11 シネマ10）。Chromagraph Camera と純正カメラの撮り比べ 5 組に合わせ込み、作り手本人たち（Steve Yedlin と仲間）の作例 10 枚で確かめた形: 素直な現像のまま影を少し落とす、白と明るい所はクリーム色（黒は無色）、色は少し淡く、明るいかすんだ空はクリーム色に・深い青空と海は濃い青緑のまま残す。Aftersun の色を足せる（sunInto: 足す色のルック → 混ぜた核。つまみ 0 でこの核そのまま、100 で混ぜた核）。粒のはじめの値は 0（2026-11-13 本人。つまみ +100 で knobRef の量＝前の粒）。露光は meter の決まり（空を軽く見た真ん中の明るさを 32 に、白を 72〜90 に。白のために上げるのは、空を含めた画面全体の真ん中が 44 になる所まで）",
    "file": "cinema.bin",
    "size": 65,
    "lo": [
@@ -54,14 +54,22 @@
     "from": 0.8,
     "amount": 0.7
    },
-   "sunInto": "cinemasun",
+   "sunInto": {
+    "aftersun3": "cinemasun",
+    "deepblue": "cinemablue",
+    "aqua": "cinemaaqua"
+   },
    "sunDefault": 0,
    "halation": 0.65,
    "halationEdge": true,
    "bloom": 0.0,
    "bloomWarm": 0.0,
    "soften": 0.5,
-   "grain": 23.5,
+   "grain": 0.0,
+   "knobRef": {
+    "grain": 23.5,
+    "soften": 1.5
+   },
    "grainSize": 4.0,
    "colorNoise": 60,
    "grainCurve": [
@@ -138,6 +146,11 @@
    "bloomWarm": 0.0,
    "soften": 0.5,
    "grain": 5.0,
+   "knobRef": {
+    "grain": 12,
+    "soften": 1.5,
+    "bloomFrom": 0.35
+   },
    "grainSize": 15.0,
    "colorNoise": 60,
    "grainCurve": [
@@ -222,6 +235,11 @@
    "bloomWarm": 0.0,
    "soften": 0.5,
    "grain": 5.0,
+   "knobRef": {
+    "grain": 12,
+    "soften": 1.5,
+    "bloomFrom": 0.35
+   },
    "grainSize": 15.0,
    "colorNoise": 60,
    "grainCurve": [
@@ -306,6 +324,11 @@
    "bloomWarm": 0.0,
    "soften": 0.5,
    "grain": 4.5,
+   "knobRef": {
+    "grain": 12,
+    "soften": 1.5,
+    "bloomFrom": 0.35
+   },
    "grainSize": 20.0,
    "colorNoise": 60,
    "grainCurve": [
@@ -388,7 +411,8 @@
    "grainSize": 25.0,
    "texture": 0.0,
    "clarity": 0.0,
-   "vignette": 0.0
+   "vignette": 0.0,
+   "hidden": true
   },
   {
    "id": "aftersun",
@@ -415,7 +439,8 @@
    "grainSize": 25.0,
    "texture": 0.0,
    "clarity": 0.0,
-   "vignette": 0.0
+   "vignette": 0.0,
+   "hidden": true
   },
   {
    "id": "mine",
@@ -442,7 +467,8 @@
    "grainSize": 25.0,
    "texture": 0.0,
    "clarity": 0.0,
-   "vignette": 0.0
+   "vignette": 0.0,
+   "hidden": true
   },
   {
    "id": "weak",
@@ -469,12 +495,13 @@
    "grainSize": 25.0,
    "texture": 0.0,
    "clarity": 0.0,
-   "vignette": 0.0
+   "vignette": 0.0,
+   "hidden": true
   },
   {
    "id": "cinemasun",
    "name": "Cinema＋Aftersun",
-   "desc": "Cinema の明暗のまま、色を Aftersun（濃い青の空・濃い色）にした核。Cinema の Sun Level 100 の先。一覧には出さない（hidden）",
+   "desc": "Cinema の明暗のまま、色を Aftersun（濃い青の空・濃い色・灰色にオリーブ）にした核。Cinema に Aftersun を足した時の 100 の先。一覧には出さない（hidden）",
    "file": "cinemasun.bin",
    "size": 65,
    "lo": [
@@ -529,7 +556,243 @@
    "bloom": 0.0,
    "bloomWarm": 0.0,
    "soften": 0.5,
-   "grain": 23.5,
+   "grain": 0.0,
+   "knobRef": {
+    "grain": 23.5,
+    "soften": 1.5
+   },
+   "grainSize": 4.0,
+   "colorNoise": 60,
+   "grainCurve": [
+    [
+     0,
+     0.1
+    ],
+    [
+     0.03,
+     0.2
+    ],
+    [
+     0.1,
+     0.75
+    ],
+    [
+     0.2,
+     0.9
+    ],
+    [
+     0.4,
+     1.0
+    ],
+    [
+     0.5,
+     1.0
+    ],
+    [
+     0.6,
+     1.1
+    ],
+    [
+     0.7,
+     0.8
+    ],
+    [
+     0.8,
+     0.3
+    ],
+    [
+     0.9,
+     0.2
+    ],
+    [
+     1.0,
+     0.12
+    ]
+   ],
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0,
+   "sunGain": 1.0
+  },
+  {
+   "id": "cinemablue",
+   "name": "Cinema＋Aftersun Blue",
+   "desc": "Cinema の明暗のまま、色を Aftersun Blue（濃い青の空、灰色にオリーブを乗せない）にした核（2026-11-13。_work/シネマ_20261111/シネマとBlue10のつまみ.json）。一覧には出さない（hidden）",
+   "file": "cinemablue.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": -17.246,
+   "meter": {
+    "skyWeight": 0.25,
+    "target": 32,
+    "whiteRank": 97,
+    "whiteRange": [
+     80,
+     90
+    ],
+    "liftLimit": 30,
+    "tapLiftLimit": 12,
+    "dropLimit": 12,
+    "whiteNoSky": true,
+    "skyCap": 50,
+    "night": {
+     "dark": [
+      -4,
+      1.6
+     ],
+     "target": 4,
+     "noLift": [
+      -3,
+      -1.5
+     ],
+     "lights": [
+      4,
+      6
+     ],
+     "floor": 3,
+     "isoMax": 12800
+    }
+   },
+   "keepLight": {
+    "from": 0.8,
+    "amount": 0.7
+   },
+   "hidden": true,
+   "halation": 0.65,
+   "halationEdge": true,
+   "bloom": 0.0,
+   "bloomWarm": 0.0,
+   "soften": 0.5,
+   "grain": 0.0,
+   "knobRef": {
+    "grain": 23.5,
+    "soften": 1.5
+   },
+   "grainSize": 4.0,
+   "colorNoise": 60,
+   "grainCurve": [
+    [
+     0,
+     0.1
+    ],
+    [
+     0.03,
+     0.2
+    ],
+    [
+     0.1,
+     0.75
+    ],
+    [
+     0.2,
+     0.9
+    ],
+    [
+     0.4,
+     1.0
+    ],
+    [
+     0.5,
+     1.0
+    ],
+    [
+     0.6,
+     1.1
+    ],
+    [
+     0.7,
+     0.8
+    ],
+    [
+     0.8,
+     0.3
+    ],
+    [
+     0.9,
+     0.2
+    ],
+    [
+     1.0,
+     0.12
+    ]
+   ],
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0,
+   "sunGain": 1.0
+  },
+  {
+   "id": "cinemaaqua",
+   "name": "Cinema＋Aftersun Aqua",
+   "desc": "Cinema の明暗のまま、色を Aftersun Aqua（明るい水色の空）にした核（2026-11-13。_work/シネマ_20261111/シネマとAqua10のつまみ.json）。一覧には出さない（hidden）",
+   "file": "cinemaaqua.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": -17.246,
+   "meter": {
+    "skyWeight": 0.25,
+    "target": 32,
+    "whiteRank": 97,
+    "whiteRange": [
+     80,
+     90
+    ],
+    "liftLimit": 30,
+    "tapLiftLimit": 12,
+    "dropLimit": 12,
+    "whiteNoSky": true,
+    "skyCap": 50,
+    "night": {
+     "dark": [
+      -4,
+      1.6
+     ],
+     "target": 4,
+     "noLift": [
+      -3,
+      -1.5
+     ],
+     "lights": [
+      4,
+      6
+     ],
+     "floor": 3,
+     "isoMax": 12800
+    }
+   },
+   "keepLight": {
+    "from": 0.8,
+    "amount": 0.7
+   },
+   "hidden": true,
+   "halation": 0.65,
+   "halationEdge": true,
+   "bloom": 0.0,
+   "bloomWarm": 0.0,
+   "soften": 0.5,
+   "grain": 0.0,
+   "knobRef": {
+    "grain": 23.5,
+    "soften": 1.5
+   },
    "grainSize": 4.0,
    "colorNoise": 60,
    "grainCurve": [

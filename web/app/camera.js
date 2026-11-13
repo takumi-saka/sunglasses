@@ -12,7 +12,7 @@
 //   S・ISO・ピントは、アプリを開き直すと自動に戻す（覚えない）。WB と AF は覚える。
 // 撮った写真は、撮ったときのルック・Sun Level・明るさのまま編集で開く（写真ごとの直しの記録に入れておく）。
 import * as C from "../engine/color.js";
-import { defaultParams, sunCoreOf } from "../engine/engine.js";
+import { defaultParams, lookParams, sunCoreOf, SUN_CORES } from "../engine/engine.js";
 import * as bridge from "./bridge.js";
 import { pref, setEdit } from "./store.js";
 import { h, ring, toast } from "./ui.js";
@@ -33,8 +33,8 @@ const onOff = (b) => (b ? "オン" : "オフ");
 // 2026-11-10 夜 cinema（映画の見た目の核。Chromagraph Camera の作例を測った形）を足して、主のルックにした。
 // cinema では、Sun Level の輪は「Aftersun をどれだけ足すか」になる（0 でシネマそのまま。値はほかのルックと別に覚える）
 // 並びは、Cinema → 新しい Aftersun の 3 つ → 前からのルック（一覧に出る順）
-const FAMILIES = ["cinema", "aftersun3", "deepblue", "aqua", "aftersun2", "aftersun", "mine"];
-const SUN_MIX = ["cinema"]; // looks.json の sunInto がある核（looks.json を読む前に使う控え）
+// 2026-11-13 ルックの選び方を「Cinema のオン・オフ」と「足す Aftersun（なし／Aftersun／Blue／Aqua）」に分けた（本人の案）。
+// 前からのルック（Aftersun（前の版）・Aftersun+・Nostalgia）は一覧から外した。輪の Sun Level は、足した Aftersun の強さ
 const FAMILY_NAMES = { cinema: "Cinema", aftersun2: "Aftersun（前の版）", aftersun3: "Aftersun", deepblue: "Aftersun Blue", aqua: "Aftersun Aqua", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
 
 // シャッター速度と ISO の 1/3 段の目盛り（端末が出せる範囲だけを使う）。手応えは 1 段ごと
@@ -93,7 +93,16 @@ export class Camera {
       pref("cameraFamily", "cinema");
       pref("cameraFamilyV3", 1);
     }
-    this.family = FAMILIES.includes(pref("cameraFamily")) ? pref("cameraFamily") : "cinema";
+    // ルックを Cinema のオン・オフと足す Aftersun に分けたとき（2026-11-13）、1回だけ、前の覚えから移す
+    if (!pref("cameraLookV4")) {
+      const f = pref("cameraFamily") || "cinema", mix = pref("cameraSunMix") || 0;
+      pref("cameraCinema", SUN_CORES.includes(f) ? 0 : 1);
+      pref("cameraSun", SUN_CORES.includes(f) ? f : f === "cinema" && mix > 0 ? SUN_CORES[0] : "");
+      if (!(mix > 0)) pref("cameraSunMix", 100); // Cinema に足す量のはじめの値は 100（前は「足さない」を 0 で表していた）
+      pref("cameraLookV4", 1);
+    }
+    this.cinema = pref("cameraCinema") !== 0;
+    this.sun = SUN_CORES.includes(pref("cameraSun")) ? pref("cameraSun") : null;
     this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
     this.build();
     window.addEventListener("sunglasses:camera", (e) => this.onCamera(e.detail));
@@ -173,7 +182,9 @@ export class Camera {
       return;
     }
     el.replaceChildren(h("div", { class: "cam-looks-list" }, h("small", {}, "ルック"),
-      ...FAMILIES.map((id) => h("button", { class: "cam-look" + (id === this.family ? " is-on" : ""), onClick: () => this.setFamily(id) }, this.familyName(id)))));
+      h("button", { class: "cam-look" + (this.cinema ? " is-on" : ""), onClick: () => this.setLook(!this.cinema, this.sun, true) }, "Cinema　" + (this.cinema ? "オン" : "オフ")),
+      h("small", {}, "Aftersun を足す"),
+      ...[null, ...SUN_CORES].map((id) => h("button", { class: "cam-look" + (id === this.sun ? " is-on" : ""), onClick: () => this.setLook(this.cinema, id) }, id ? this.familyName(id) : "なし"))));
     el.hidden = false;
     bridge.haptic("tick");
   }
@@ -235,7 +246,7 @@ export class Camera {
     }
     this.els.frame.dataset.frame = s.frame;
     this.els.grid.hidden = s.frame !== "thirds";
-    const name = this.familyName(this.family);
+    const name = this.lookName();
     this.els.coreBtn.classList.toggle("is-long", name.length > 12); // 長い名前は字を小さくして、シャッターに寄らないようにする
     this.els.coreBtn.replaceChildren(h("small", {}, "ルック"), h("b", {}, name), h("span", { class: "cam-core-hint" }, "長押しで元の画"));
   }
@@ -339,25 +350,31 @@ export class Camera {
   }
 
   // ---------- ルックと Sun Level ----------
-  // シネマでは、輪は「Aftersun をどれだけ足すか」（はじめは 0）。ほかのルックでは Sun Level（はじめは 100）。値は別々に覚える
-  sunMix() {
-    return SUN_MIX.includes(this.family);
-  }
-
+  // 輪の Sun Level は、足した Aftersun の強さ（はじめは 100）。Cinema がオンの時（Cinema に足す量）とオフの時で、値は別々に覚える
   sunKey() {
-    return this.sunMix() ? "cameraSunMix" : "cameraSunLevel";
+    return this.cinema ? "cameraSunMix" : "cameraSunLevel";
   }
 
   sunDef() {
-    return this.sunMix() ? 0 : 100;
+    return 100;
   }
 
   sunName() {
-    return this.sunMix() ? "Aftersun" : "Sun Level";
+    return "Sun Level";
+  }
+
+  // いまのルックを、保存する値の形（core・sun・sunLevel）にする
+  lookP() {
+    return lookParams(this.cinema, this.sun, Math.round(this.sunLevel));
+  }
+
+  lookName() {
+    const n = this.sun ? this.familyName(this.sun) : "";
+    return this.cinema ? (n ? `Cinema ＋ ${n}` : "Cinema") : n || "ルックなし";
   }
 
   look() {
-    return this.engine.lookFor({ core: this.family, sunLevel: this.sunLevel });
+    return this.engine.lookFor(lookParams(this.cinema, this.sun, this.sunLevel));
   }
 
   async lutBase64(core) {
@@ -403,11 +420,15 @@ export class Camera {
     this.bubbleTimer = setTimeout(() => b.classList.remove("is-on"), ms);
   }
 
-  async setFamily(id) {
+  // ルックを替える。Cinema のオン・オフは、続けて Aftersun を選べるよう、一覧を開いたままにする
+  async setLook(cinema, sun, keepOpen = false) {
     this.toggleLooks(false);
-    if (id === this.family || !FAMILIES.includes(id)) return;
-    this.family = id;
-    pref("cameraFamily", this.family);
+    if (cinema === this.cinema && sun === this.sun) return;
+    this.cinema = cinema;
+    this.sun = sun;
+    pref("cameraCinema", cinema ? 1 : 0);
+    pref("cameraSun", sun || "");
+    if (keepOpen) this.toggleLooks(true);
     this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
     bridge.haptic("tick");
     this.renderSettings();
@@ -720,10 +741,10 @@ export class Camera {
       const autoBtn = full ? h("span", { class: "cam-meter" }, "露出計") : h("button", { class: "cam-auto" + (this.expo.auto ? " is-on" : ""), onClick: () => this.setAuto() }, "自動");
       this.autoBtn = full ? null : autoBtn;
       // 露出と Sun Level は同時に動かさないので、1本の輪にして見出しで切り替える（画を大きくするため）
-      const dial = pref("cameraDial") === "sun" ? "sun" : "ev";
+      const dial = this.sun && pref("cameraDial") === "sun" ? "sun" : "ev"; // Aftersun を足していない時は、Sun Level の輪は出さない
       const tabs = (cur) => h("span", { class: "cam-tabs" },
         h("button", { class: "cam-tab" + (cur === "ev" ? " is-on" : ""), onClick: () => this.setDial("ev") }, "露出"),
-        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), onClick: () => this.setDial("sun") }, this.sunName()));
+        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), hidden: !this.sun, onClick: () => this.setDial("sun") }, this.sunName()));
       const evStops = [];
       for (let k = -9; k <= 9; k++) evStops.push({ v: k / 3, mark: k % 3 ? "minor" : "major", label: k % 3 ? null : (k > 0 ? "+" : k < 0 ? "−" : "") + Math.abs(k / 3), gap: 17 });
       this.evStops = evStops;
@@ -740,7 +761,7 @@ export class Camera {
       this.showEv(this.expo.display);
       const lvStops = [];
       // 核そのものの所（多くの核は 67。100 はその 1.5 倍）に印を付けて、軽く止まる。型のフィルムは 100 が核そのもの（2026-11-10）
-      const sc = sunCoreOf(this.engine.cores ? this.engine.coreById(this.family) : null);
+      const sc = this.cinema || !this.sun ? 100 : sunCoreOf(this.engine.cores ? this.engine.coreById(this.sun) : null);
       for (let v = 0; v <= 100; v++) lvStops.push({ v, mark: v % 50 === 0 || v === sc ? "major" : v % 10 === 0 ? "minor" : null, label: v % 50 === 0 ? String(v) : null, gap: 3.4 });
       const lv = ring({
         label: "", extra: h("span", { class: "cam-dial-extra" }, tabs("sun")), stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: sc < 100 ? [sc] : [],
@@ -955,7 +976,7 @@ export class Camera {
     const lk = this.look(), main = lk.B && lk.wB > 0 ? "B" : "A";
     const applied = this.expo.auto ? this.gains[main] : this.expo.frozen[main] * Math.pow(2, this.expo.remainder);
     this.pendingLook = {
-      core: this.family, sunLevel: Math.round(this.sunLevel),
+      ...this.lookP(),
       exposure: this.expo.auto || !this.autoNow ? 0 : Math.round(C.clamp(log2(applied / this.autoNow[main]), -3, 3) * 100) / 100,
     };
     bridge.haptic("confirm");
@@ -974,7 +995,7 @@ export class Camera {
       toast("撮れませんでした。" + (d.error || ""), [], 6000);
       return;
     }
-    const item = d.item, look = this.pendingLook || { core: this.family, sunLevel: this.sunLevel, exposure: 0 };
+    const item = d.item, look = this.pendingLook || { ...this.lookP(), exposure: 0 };
     const params = { ...defaultParams(), ...look };
     await setEdit(bridge.keyOf(item), { params, shot: true });
     const shot = { item, url: null };

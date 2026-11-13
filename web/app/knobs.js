@@ -1,6 +1,6 @@
 // つまみの一覧と並び（2026-11-05）。0 が「核のまま」。
-// 名前は Lightroom と同じ呼び方。粒・にじみ・白み・やわらかさは「核の量の何％増やすか」。
-const pct = (v) => (v > 0 ? "+" : "") + Math.round(v) + "%";
+// 名前は Lightroom と同じ呼び方。粒・にじみ・白み・やわらかさは、0 がルックのまま、−100 で無し、
+// 上げる側は 100 ごとに「ルックの量か目安の量の大きいほう」を足す（engine.js の knobAmount。2026-11-13。前は ％ の掛け算だけ）。
 const num = (v) => (v > 0 ? "+" : "") + Math.round(v);
 
 export const KNOBS = {
@@ -18,11 +18,11 @@ export const KNOBS = {
   clarity: { label: "明瞭度" },
   dehaze: { label: "かすみの除去" },
   vignette: { label: "周辺光量補正" },
-  grain: { label: "粒子", min: -100, max: 200, fmt: pct },
+  grain: { label: "粒子", min: -100, max: 200 },
   grainSize: { label: "粒子のサイズ", min: -50, max: 50 },
-  halation: { label: "ハレーション", min: -100, max: 200, fmt: pct },
-  bloom: { label: "白み", min: -100, max: 200, fmt: pct },
-  soften: { label: "やわらかさ", min: -100, max: 200, fmt: pct },
+  halation: { label: "ハレーション", min: -100, max: 200 },
+  bloom: { label: "白み", min: -100, max: 200 },
+  soften: { label: "やわらかさ", min: -100, max: 200 },
   sharpen: { label: "シャープ", min: 0, max: 150 },
   noise: { label: "ノイズ軽減", min: 0, max: 100 },
   colorNoise: { label: "カラーノイズ軽減", min: 0, max: 100 },
