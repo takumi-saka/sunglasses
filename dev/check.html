@@ -5,13 +5,16 @@
 <script type="module">
   // 確かめ用: RAW を開き、決まった幅で、核ごと・段ごとに描いた画（PNG）と、露光量の値を返す
   import { Engine, defaultParams } from "/engine/engine.js";
+  import { shotInfo } from "/engine/exif.js";
+  import { sceneOf } from "/engine/color.js";
   window.__run = async (dngUrl, width, modes) => {
     const e = window.__e || (window.__e = await Engine.create(document.getElementById("c")));
     const res = await fetch(dngUrl);
     const t0 = performance.now();
     // JPEG・PNG（ほかのアプリの写真）は、アプリと同じく画像として開く。それ以外は RAW
-    const im = /\.(jpe?g|png)$/i.test(dngUrl) ? await e.openBitmap(await createImageBitmap(await res.blob())) : await e.openRaw(await res.arrayBuffer());
-    const out = { meta: im.meta, key: im.key, w: im.w, h: im.h, decodeMs: performance.now() - t0, results: [] };
+    const buf = await res.arrayBuffer();
+    const im = /\.(jpe?g|png)$/i.test(dngUrl) ? await e.openBitmap(await createImageBitmap(new Blob([buf])), shotInfo(buf)) : await e.openRaw(buf);
+    const out = { meta: im.meta, scene: (sceneOf(im.meta, im.key) || {}).ev ?? null, key: im.key, w: im.w, h: im.h, decodeMs: performance.now() - t0, results: [] };
     for (const m of modes) {
       const p = defaultParams();
       p.core = m.core;
@@ -19,6 +22,11 @@
       if (m.kind === "nograin") p.grain = -100;
       Object.assign(p, m.params || {});
       // 確かめ用: 光の色を残す決まり（keepLight）を、描き方ごとに差し替える（null で残さない）。露光の覚えも捨てる
+      // 確かめ用: 露光の決まり（meter）の値を、描き方ごとに上書きする（night: null で夜の決まりを外す、など）
+      if (m.meter) {
+        for (const id of [m.core, e.coreById(m.core).sunInto]) if (id) Object.assign(e.coreById(id).meter, m.meter);
+        e.evCache = {};
+      }
       if ("keepLight" in m) {
         for (const id of [m.core, e.coreById(m.core).sunInto]) if (id) e.coreById(id).keepLight = m.keepLight;
         e.evCache = {};

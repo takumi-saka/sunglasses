@@ -222,6 +222,13 @@ function skyParts(small, key, ap0ToSrgb, curve, deepFrom = 16, deepWidth = 10) {
   }
   return { sky, deep, skyShare: skySum / k, deepShare: deepSum / k };
 }
+// 場面そのものの明るさ（段）。ISO 100 で、画の明るさの平均がちょうど中くらいの灰色に写る露出の値（EV）。
+// 晴れた昼で 12〜15、室内で 3〜8、夜の街で -4〜4。ISO・シャッター・絞りのどれかが分からない写真は null（夜の決まりは効かない）
+// 返す形: { ev: 場面そのものの明るさ, iso: 撮った時の ISO }
+export function sceneOf(meta, key) {
+  if (!meta || !(meta.iso > 0) || !(meta.shutter > 0) || !(meta.aperture > 0) || !(key > 0)) return null;
+  return { ev: Math.log2((meta.aperture * meta.aperture) / meta.shutter) - Math.log2(meta.iso / 100) + Math.log2(key / 0.18), iso: meta.iso };
+}
 // 核の露光量（段）。env は { ap0ToAp1, ap0ToSrgb, neutralCurve, targetL }（engine をそのまま渡せる）
 // 2026-11-11 本人の写真 43 枚と Chromagraph の作例 30 枚で決まりを直した（パソコンの道具 cinema_fit.meter と同じ）:
 //   Chromagraph は、真ん中の明るさ（1〜64 でばらばら）ではなく、明るい所（ほぼ 72〜93）をそろえて置いている。
@@ -230,9 +237,23 @@ function skyParts(small, key, ap0ToSrgb, curve, deepFrom = 16, deepWidth = 10) {
 //     （白い猫・明るい壁・かすんだ空のように、明るい物が大半の画が、灰色に沈まないようにする。深い青空は深いまま残す）
 //   ・白が高すぎる時は whiteRange[1] まで下げる。底は target - dropLimit。
 //     dropSmallLights（今は使っていない。夕焼けを背にした人や窓のある店と見分けがつかず、暗くしすぎた）があれば、底まで下げても上から (100 - rank)% の所が暗い画（明るいのは小さな光だけ＝夜の店・夜の街）は、target - limit まで下げる
-export function coreEv(small, key, core, env, weights = null) {
+//   ・夜の決まり（night。2026-11-11 本人の 17 Ultra の写真で足した）。scene（場面そのものの明るさと ISO。sceneOf）が分かる時だけ効く。昼は変わらない
+//     今までは画の中身だけで決めていたので、夜の街も昼と同じ明るさまで持ち上げ、灯りが白く飛び、暗い所がざらついた。
+//     dark: 場面が dark[1] より暗いと、目指す真ん中の明るさを下げていく（dark[0] で night.target）
+//     noLift: 場面が noLift[1] より暗いと、白が足りない時の上げ幅を減らす（noLift[0] で 0）
+//     lights: 場面が lights[1] より暗いと、白が高すぎる時の底を下げていく（lights[0] で night.floor。暗い中の灯り・店・看板を白く飛ばさない）
+//     isoMax: 撮ったままの明るさから持ち上げるのは、ISO が isoMax 相当になる所まで（高い ISO の暗い写真を何段も持ち上げて、ざらつきと紫かぶりを出さない）
+export function coreEv(small, key, core, env, weights = null, scene = null) {
+  const ev = meterEv(small, key, core, env, weights, scene), N = scene && core.meter && core.meter.night;
+  // 倍率 (0.18 / key) * 2^ev が、isoMax / ISO を超えないようにする
+  return N && N.isoMax ? Math.min(ev, Math.log2((N.isoMax / scene.iso) * (key / 0.18))) : ev;
+}
+function meterEv(small, key, core, env, weights, scene) {
   const m = core.meter;
   if (!m) return searchEv((e) => medianCore(small, key, e, core.cpu, env.ap0ToAp1, weights), env.targetL + core.lift);
+  const N = scene ? m.night : null;
+  const ramp = (r) => (N && r ? clamp((r[1] - scene.ev) / (r[1] - r[0]), 0, 1) : 0);
+  const target = N ? m.target + (N.target - m.target) * ramp(N.dark) : m.target;
   const P = skyParts(small, key, env.ap0ToSrgb, env.neutralCurve, m.skyDeep?.[0], m.skyDeep?.[1]);
   const k = P.sky.length, sw = m.skyWeight ?? 1;
   const w = new Float32Array(k);
@@ -240,17 +261,19 @@ export function coreEv(small, key, core, env, weights = null) {
   const at = (ww, q) => (e) => histAt(meterHist(small, key, e, core.cpu, env.ap0ToAp1, ww), q);
   const rank = (m.whiteRank ?? 97) / 100;
   const mid = at(w, 0.5), top = at(null, rank);
-  const ev = searchEv(mid, m.target);
+  const ev = searchEv(mid, target);
   if (!m.whiteRange) return ev;
   const [lo, hi] = m.whiteRange;
   if (top(ev) > hi) {
     let drop = m.dropLimit ?? 100;
     const s = m.dropSmallLights;
     if (s) {
-      const p = at(null, s.rank / 100)(searchEv(mid, m.target - drop));
+      const p = at(null, s.rank / 100)(searchEv(mid, target - drop));
       drop += (s.limit - drop) * clamp((s.from - p) / (s.from - s.to), 0, 1);
     }
-    return Math.max(searchEv(top, hi), searchEv(mid, m.target - drop));
+    let floor = target - drop;
+    if (N) floor += (Math.min(N.floor, floor) - floor) * ramp(N.lights);
+    return Math.max(searchEv(top, hi), searchEv(mid, Math.max(floor, 1)));
   }
   let topN = top;
   if (m.whiteNoSky && P.skyShare < 0.97) {
@@ -260,13 +283,13 @@ export function coreEv(small, key, core, env, weights = null) {
   }
   if (topN(ev) < lo) {
     // 撮る画面でたたいた所を重く測る時（weights あり）は、本人が明るさを指定しているので、上げ幅を tapLiftLimit にとどめる
-    const lift = weights && m.tapLiftLimit != null ? m.tapLiftLimit : m.liftLimit ?? 100;
-    let up = Math.min(searchEv(topN, lo), searchEv(mid, m.target + lift));
+    const lift = (weights && m.tapLiftLimit != null ? m.tapLiftLimit : m.liftLimit ?? 100) * (1 - ramp(N && N.noLift));
+    let up = Math.min(searchEv(topN, lo), searchEv(mid, target + lift));
     if (topN !== top) up = Math.min(up, searchEv(top, hi));
     if (m.liftWhole) {
       // 前の決まり（シネマ10）。空を軽く見ない「画面全体の真ん中の明るさ」も target + liftLimit で止める
       const one = new Float32Array(k).fill(1);
-      up = Math.min(up, searchEv(at(one, 0.5), m.target + lift));
+      up = Math.min(up, searchEv(at(one, 0.5), target + lift));
     }
     if (m.skyCap && P.deepShare >= (m.skyCapShare ?? 0.1)) up = Math.min(up, searchEv(at(P.deep, 0.5), m.skyCap));
     return Math.max(ev, up);

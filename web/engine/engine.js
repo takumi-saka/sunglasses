@@ -351,7 +351,7 @@ export class Engine {
         this.evCache[id] = C.searchEv((ev) => C.medianNeutral(im.small, im.key, ev, this.ap0ToSrgb, this.neutralCurve), this.targetL);
       } else {
         const core = this.coreById(id);
-        this.evCache[id] = C.coreEv(this._smallFor(core, im.small, im.meta), im.key, core, this);
+        this.evCache[id] = C.coreEv(this._smallFor(core, im.small, im.meta), im.key, core, this, null, C.sceneOf(im.meta, im.key));
       }
     }
     return this.evCache[id];
@@ -690,7 +690,7 @@ export class Engine {
       [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
     const src = { tex: up };
     const { small, key } = t;
-    const gain = (c) => (0.18 / key) * Math.pow(2, C.coreEv(this._smallFor(c, small, t.meta), key, c, this));
+    const gain = (c) => (0.18 / key) * Math.pow(2, C.coreEv(this._smallFor(c, small, t.meta), key, c, this, null, C.sceneOf(t.meta, key)));
     const gainN = lk.wN > 0 ? (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianNeutral(small, key, e, this.ap0ToSrgb, this.neutralCurve), this.targetL)) : 1;
     const lab = this._rt(w, h), rgb = this._rt(w, h), out = this._rt(w, h, true);
     used.push(lab, rgb, out);

@@ -885,7 +885,10 @@ export class Camera {
       const k0 = key / Math.pow(2, this.cEvNow || 0);
       this.aeKey = this.aeKey ? this.aeKey * 0.8 + k0 * 0.2 : k0;
     } else if (this.sensorManual() && !this.fullManual()) this.priorityStep(key);
-    const gainOf = (core) => (0.18 / key) * Math.pow(2, C.coreEv(small, key, core, this.engine, wts));
+    // 場面そのものの明るさ（夜の決まり用）。絞りは APK から来ないので、このレンズで撮った RAW から覚えた値（無ければ f/1.8）を使う
+    const ap = (this.cam && (pref("cameraAperture") || {})[this.cam.id]) || 1.8;
+    const lv = this.live || {}, scene = C.sceneOf({ iso: lv.iso, shutter: lv.exposure, aperture: ap }, key);
+    const gainOf = (core) => (0.18 / key) * Math.pow(2, C.coreEv(small, key, core, this.engine, wts, scene));
     const gA = gainOf(lk.A), gB = lk.B ? gainOf(lk.B) : gA;
     this.gains = { A: this.gains.A * 0.6 + gA * 0.4, B: this.gains.B * 0.6 + gB * 0.4 };
     this.autoNow = { A: gA, B: gB };
@@ -981,6 +984,11 @@ export class Camera {
     try {
       const res = await fetch(bridge.mediaUrl(item));
       const t = await this.engine.decodeThumb(await res.arrayBuffer(), 256);
+      // このレンズの絞りを覚える（撮る前の画面で、場面そのものの明るさを出すのに使う）
+      if (t.meta && t.meta.aperture > 0 && this.cam) {
+        const all = pref("cameraAperture") || {};
+        if (all[this.cam.id] !== t.meta.aperture) pref("cameraAperture", { ...all, [this.cam.id]: t.meta.aperture });
+      }
       const cv = document.createElement("canvas");
       this.engine.renderThumb(t, look, cv);
       shot.url = cv.toDataURL("image/jpeg", 0.85);

@@ -4,6 +4,7 @@
 //       { id, stage: "done", pixels, w, h, meta, small, sw, sh, key }
 //       { id, stage: "error", error }
 import createRaw from "./raw.js";
+import { shotInfo } from "./exif.js";
 
 const SMALL_W = 160; // 露光量の自動合わせに使う小さな画の幅（パソコンの道具の MATCH_W と同じ）
 let M = null;
@@ -29,6 +30,11 @@ self.onmessage = async (e) => {
       const w = M._sg_width(), h = M._sg_height();
       const pixels = new Uint16Array(M.HEAPU16.buffer, M._sg_pixels(), w * h * 3).slice();
       const meta = JSON.parse(M.UTF8ToString(M._sg_meta()));
+      // LibRaw が読めなかった ISO・シャッター・絞りを、ファイルから直に読んで補う（夜の明るさの決まりに要る）
+      if (!(meta.iso > 0) || !(meta.shutter > 0) || !(meta.aperture > 0)) {
+        const s = shotInfo(bytes);
+        for (const k of ["iso", "shutter", "aperture"]) if (!(meta[k] > 0) && s[k] > 0) meta[k] = s[k];
+      }
       M._sg_close();
       if (cmd === "thumb") {
         // 一覧の小さな画: 長い辺を size に縮めた光の量の画（0〜1 の浮動小数点）と、露光量の自動合わせ用の値

@@ -31,7 +31,24 @@
     "tapLiftLimit": 12,
     "dropLimit": 12,
     "whiteNoSky": true,
-    "skyCap": 50
+    "skyCap": 50,
+    "night": {
+     "dark": [
+      -4,
+      1.6
+     ],
+     "target": 4,
+     "noLift": [
+      -3,
+      -1.5
+     ],
+     "lights": [
+      4,
+      6
+     ],
+     "floor": 3,
+     "isoMax": 12800
+    }
    },
    "keepLight": {
     "from": 0.8,
@@ -483,7 +500,24 @@
     "tapLiftLimit": 12,
     "dropLimit": 12,
     "whiteNoSky": true,
-    "skyCap": 50
+    "skyCap": 50,
+    "night": {
+     "dark": [
+      -4,
+      1.6
+     ],
+     "target": 4,
+     "noLift": [
+      -3,
+      -1.5
+     ],
+     "lights": [
+      4,
+      6
+     ],
+     "floor": 3,
+     "isoMax": 12800
+    }
    },
    "keepLight": {
     "from": 0.8,

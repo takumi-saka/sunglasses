@@ -2,6 +2,7 @@
 // 写真の上: 押している間は元の画、2 回たたくと全画面、2 本指でつまむと拡大、拡大中は 1 本指で動かす。
 // 下の板: 核の箱・つまみ（よく使う／明るさ／色／色ごと／グレーディング／効果／細部／切り抜き）。
 import { defaultParams, isSunMix, sunCoreOf, sunDefaultOf, sunGainOf } from "../engine/engine.js";
+import { shotInfo } from "../engine/exif.js";
 import * as bridge from "./bridge.js";
 import { cropForAspect, panCrop, rotateCrop, zoomCrop } from "./crop.js";
 import { curveEditor } from "./curve.js";
@@ -115,7 +116,7 @@ export class Editor {
       const isJpeg = /\.jpe?g$/i.test(item.name || "") || (item.mime || "").includes("jpeg");
       if (isJpeg) {
         const bmp = await createImageBitmap(new Blob([buf]), { imageOrientation: "from-image", colorSpaceConversion: "none" });
-        await this.engine.openBitmap(bmp, {});
+        await this.engine.openBitmap(bmp, shotInfo(buf));
         bmp.close();
       } else {
         await this.engine.openRaw(buf, {
