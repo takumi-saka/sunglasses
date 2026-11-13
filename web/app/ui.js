@@ -1,5 +1,6 @@
 // 画面の部品（2026-11-05）: 小さな DOM の作り方、つまみ、知らせ、下から出る板
 import { haptic } from "./bridge.js";
+import { water } from "./water.js";
 
 export function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -32,8 +33,13 @@ export function slider({ label, min, max, step = 1, value, def = 0, fmt, track =
   const span = max - min, zeroAt = (def - min) / span;
   trackEl.style.setProperty("--zero", zeroAt * 100 + "%");
 
+  // つまむ所は水滴。動かすと、水が遅れてゆれる
+  const drop = water(thumb, { lens: true, press: false });
+  let lastT = null;
   function render() {
     const t = (v - min) / span;
+    if (lastT !== null && t !== lastT) drop.slosh((t - lastT) * 260);
+    lastT = t;
     thumb.style.left = t * 100 + "%";
     fill.style.left = Math.min(t, zeroAt) * 100 + "%";
     fill.style.width = Math.abs(t - zeroAt) * 100 + "%";
@@ -219,13 +225,15 @@ export function ring({ label, stops, index = 0, px = 16, fmt, extra = null, onIn
 }
 
 // ---------- 知らせ ----------
-let toastEl = null, toastTimer = 0;
+let toastEl = null, toastTimer = 0, toastWater = null;
 export function toast(text, actions = [], ms = 4000) {
   if (!toastEl) {
     toastEl = h("div", { class: "toast" });
     document.body.append(toastEl);
+    toastWater = water(toastEl, { kind: "solid", radius: 24, press: false });
   }
   toastEl.replaceChildren(h("span", { class: "toast-text" }, text), ...actions.map(([t, fn]) => h("button", { class: "toast-btn", onClick: fn }, t)));
+  if (toastWater.blob) toastEl.prepend(toastWater.blob.el); // 中身を入れ替えると水が外れるので、戻す
   toastEl.classList.add("is-on");
   clearTimeout(toastTimer);
   if (ms) toastTimer = setTimeout(() => toastEl.classList.remove("is-on"), ms);
@@ -236,8 +244,10 @@ let openSheet = null;
 export function sheet(title, body, { onClose } = {}) {
   closeSheet();
   const back = h("div", { class: "sheet-back", onClick: () => closeSheet() });
-  const el = h("div", { class: "sheet", role: "dialog" }, h("div", { class: "sheet-grip" }), h("div", { class: "sheet-title" }, title), body);
+  const el = h("div", { class: "sheet", role: "dialog" }, h("div", { class: "sheet-in" }, h("div", { class: "sheet-grip" }), h("div", { class: "sheet-title" }, title), body));
   document.body.append(back, el);
+  // 板は透けない濃い水（透かすと、後ろの字と重なって読めない）
+  water(el, { kind: "solid", radius: 28, press: false });
   requestAnimationFrame(() => {
     back.classList.add("is-on");
     el.classList.add("is-on");
@@ -254,7 +264,7 @@ export function closeSheet() {
   setTimeout(() => {
     back.remove();
     el.remove();
-  }, 220);
+  }, 340);
   if (onClose) onClose();
   return true;
 }

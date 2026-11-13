@@ -26,11 +26,12 @@
 </section>
 
 <section id="editor" class="screen ed" hidden>
+  <div class="ed-bg"><div id="ed-bg"></div></div>
   <header class="ed-top">
     <button id="ed-back" class="icon-btn" aria-label="一覧へ"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
     <div class="ed-title"><span id="ed-name"></span><span id="ed-sub"></span></div>
-    <button id="ed-undo" class="icon-btn" aria-label="1つ戻す"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
-    <button id="ed-redo" class="icon-btn" aria-label="やり直す"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+    <div id="ed-steps" class="ed-steps"><button id="ed-undo" class="icon-btn" aria-label="1つ戻す"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button id="ed-redo" class="icon-btn" aria-label="やり直す"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button></div>
     <button id="ed-more" class="icon-btn" aria-label="ほかの操作"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></button>
     <button id="ed-export" class="ed-export">書き出し</button>
   </header>
@@ -46,8 +47,8 @@
     <button id="ed-one" class="mini-btn">等倍</button>
     <canvas id="ed-hist" class="hist" aria-label="明るさの山。押している間は白飛びと黒つぶれを色で出す"></canvas>
   </div>
-  <nav id="ed-tabs" class="tabs"></nav>
-  <div id="ed-panel" class="ed-panel"></div>
+  <div id="ed-panel-box" class="ed-panel-box"><div id="ed-panel" class="ed-panel"></div></div>
+  <div id="ed-tabs-box" class="tabs-box"><nav id="ed-tabs" class="tabs"></nav></div>
 </section>
 <section id="camera" class="screen cam" hidden>
   <header class="cam-top">

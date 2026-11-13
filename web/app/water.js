@@ -68,7 +68,7 @@ export class Blob {
     const P = this.P = MOVE, L = LOOK;
     this.shape = shape; this.kind = kind; this.box = box;
     if (shape.r == null) shape.r = shape.h / 2;
-    const pad = 18; this.pad = pad;
+    const pad = box.pad ?? 18; this.pad = pad; // 影と揺れのための余白
     const el = this.el = document.createElement("div"); el.className = "wt-wrap";
     el.style.cssText = `left:${box.x - pad}px;top:${box.y - pad}px;width:${box.w + pad * 2}px;height:${box.h + pad * 2}px`;
     const id = this.id = "wt" + uid++, w = shape.w, h = shape.h, r = Math.min(shape.r, w / 2, h / 2), u = (n) => `url(#${id}${n})`;
@@ -76,7 +76,7 @@ export class Blob {
       el.innerHTML = `<svg class="wt-soft"><path fill="#000"/></svg><svg><path fill="rgba(255,255,255,.94)"/></svg>`;
     } else {
       // ふちの光：左上のふちだけ細く暗い／右下の内側に光がたまる／左上に小さく鋭い光。位置は、ふちの長さに対する割合で決める
-      const per = 2 * (w - 2 * r) + 2 * (h - 2 * r) + 2 * Math.PI * r, c = ((Math.PI * r) / 2 / per) * 100, br = ((h / 2 - r) / per) * 100, tl = 50 + br, k = L.wide;
+      const per = 2 * (w - 2 * r) + 2 * (h - 2 * r) + 2 * Math.PI * r, c = ((Math.PI * r) / 2 / per) * 100, br = ((h / 2 - r) / per) * 100, tl = 50 + br, k = L.wide, ext = Math.min(5, 3600 / per); // まっすぐな辺へのびる長さ。大きい板で長くなりすぎないよう 36px まで
       const arc = (from, len, attrs) => `<path fill="none" pathLength="100" stroke-dasharray="${len.toFixed(2)} 100" stroke-dashoffset="${(-from).toFixed(2)}" ${attrs}/>`;
       const body = kind === "solid" ? `<svg><path fill="#16191b"/></svg>` : `<div class="clip"><div class="gl"></div></div>`;
       el.innerHTML = `<svg class="wt-shadow"><defs><mask id="${id}o" maskUnits="userSpaceOnUse" x="-40" y="-40" width="${box.w + pad * 2 + 80}" height="${box.h + pad * 2 + 80}"><rect x="-40" y="-40" width="${box.w + pad * 2 + 80}" height="${box.h + pad * 2 + 80}" fill="#fff"/><path fill="#000"/></mask>
@@ -88,8 +88,8 @@ export class Blob {
           <filter id="${id}s" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${(1 * k).toFixed(2)}"/></filter>
           <clipPath id="${id}k"><path/></clipPath></defs>
           <g clip-path="${u("k")}">` +
-            arc(tl - 0.9 * c, 2.2 * c + 5, `stroke="#001018" stroke-opacity=".34" stroke-width="${(3 * k).toFixed(1)}" filter="${u("s")}"`) +
-            arc(br + 0.1 * c, 1.2 * c + 5, `stroke="#fff" stroke-opacity="${kind === "solid" ? 0.22 : 0.5}" stroke-width="${(Math.min(9, h * 0.22) * k).toFixed(1)}" filter="${u("b")}"`) +
+            arc(tl - 0.9 * c, 2.2 * c + ext, `stroke="#001018" stroke-opacity=".34" stroke-width="${(3 * k).toFixed(1)}" filter="${u("s")}"`) +
+            arc(br + 0.1 * c, 1.2 * c + ext, `stroke="#fff" stroke-opacity="${kind === "solid" ? 0.22 : 0.5}" stroke-width="${(Math.min(9, h * 0.22) * k).toFixed(1)}" filter="${u("b")}"`) +
             arc(tl + 0.32 * c, 0.42 * c, `stroke="#fff" stroke-opacity=".95" stroke-width="${Math.min(3.4, h * 0.09).toFixed(1)}" stroke-linecap="round"`) +
             arc(tl + 1.0 * c, 0.01, `stroke="#fff" stroke-opacity=".9" stroke-width="${Math.min(3, h * 0.08).toFixed(1)}" stroke-linecap="round"`) +
           `</g><path fill="none" stroke="${u("")}" stroke-width="1.3"/></svg>`;
@@ -211,9 +211,7 @@ export class Blob {
 // o.kind: glass／white／solid　o.radius: 角の半径（なければカプセル）　o.inset: 箱より内側へ小さくする量　o.lens: 水滴　o.press: false で押しても動かさない
 export function water(el, o = {}) {
   let b = null, w0 = 0, h0 = 0;
-  const cs = getComputedStyle(el);
-  if (cs.position === "static") el.style.position = "relative";
-  if (cs.zIndex === "auto") el.style.zIndex = "0"; // 水を、箱の字の後ろ・箱の外の物の手前に置くため
+  prep(el);
   const build = () => {
     const w = el.offsetWidth, h = el.offsetHeight;
     if (!w || !h || (w === w0 && h === h0)) return;
@@ -229,5 +227,36 @@ export function water(el, o = {}) {
     el.addEventListener("pointermove", (e) => b && b.held && b.press(...pos(e)));
     for (const ev of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(ev, () => b && b.release());
   }
-  return { get blob() { return b; }, nudge: (a) => b && b.nudge(a) };
+  return { get blob() { return b; }, nudge: (a) => b && b.nudge(a), slosh: (a) => { if (b) { b.slosh(a, 0.016); wake(b); } } };
+}
+
+// 箱の後ろに水を敷くための下ごしらえ（水を、箱の字の後ろ・箱の外の物の手前に置く）
+function prep(el) {
+  const cs = getComputedStyle(el);
+  if (cs.position === "static") el.style.position = "relative";
+  if (cs.zIndex === "auto") el.style.zIndex = "0";
+}
+
+// 選んでいる所を示す白い水のつぶ。host（横に流れる行でもよい）の中を、選んだ子の所へ移る。前のふちが先に着き、後ろのふちが遅れて付いてくる
+export function indicator(host, { height = 38 } = {}) {
+  let b = null;
+  prep(host);
+  return {
+    to(el) {
+      if (!el || !el.offsetWidth) return;
+      const x = el.offsetLeft, w = el.offsetWidth, W = host.scrollWidth, H = host.clientHeight;
+      if (!b || b.box.w !== W || b.box.h !== H) {
+        if (b) b.destroy();
+        b = new Blob(host, { x: 0, y: 0, w: W, h: H, pad: 0 }, { cx: x + w / 2, cy: H / 2, w, h: Math.min(height, H - 8) }, "white");
+        b.motion = { L: new Spring(x, MOVE.lead, MOVE.zl), R: new Spring(x + w, MOVE.lead, MOVE.zl) };
+        return;
+      }
+      if (!b.el.isConnected) host.prepend(b.el); // 行の中身を入れ替えた時に外れるので、戻す
+      const { L, R } = b.motion;
+      if (L.to === x && R.to === x + w) return;
+      const right = x > L.to;
+      (right ? R : L).set(MOVE.lead, MOVE.zl); (right ? L : R).set(MOVE.tail, MOVE.zt);
+      L.to = x; R.to = x + w; wake(b);
+    },
+  };
 }

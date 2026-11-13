@@ -107,14 +107,21 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .lib.is-selecting .tile.is-selected .thumb { opacity: .72; }
 
 /* ---------- 編集 ---------- */
-.ed-top { display: flex; align-items: center; gap: 2px; height: 56px; padding: 0 14px 0 4px; }
-.ed-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.3; padding-left: 2px; }
+/* 後ろに、開いている写真をぼかして暗くしたものを敷く（水ごしに色が映る）。写真そのものには何も重ねない */
+.ed { z-index: 0; }
+.ed-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; background: #0a0a0a; }
+.ed-bg > div { position: absolute; inset: -70px; background: center / cover no-repeat; filter: blur(34px) brightness(.42) saturate(1.25); }
+.ed.is-full .ed-bg { display: none; }
+.ed-top { display: flex; align-items: center; gap: 8px; height: 68px; padding: 0 14px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.55); }
+.ed-top .icon-btn { width: 44px; height: 44px; }
+.ed-steps { display: flex; height: 44px; padding: 0 4px; }
+.ed-steps .icon-btn { width: 40px; }
+.ed-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.3; padding-left: 4px; }
 #ed-name { font: 500 13px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#ed-sub { font-size: 11px; color: var(--sub); }
-#ed-undo, #ed-redo { color: var(--sub); }
-.ed-export { margin-left: 8px; padding: 8px 2px; color: var(--accent); font-weight: 700; font-size: 15px; white-space: nowrap; }
-.ed-export:active { opacity: .6; }
-.ed-photo { position: relative; flex: 1 1 auto; min-height: 0; background: #000; overflow: hidden; touch-action: none; }
+#ed-sub { font-size: 11px; color: rgba(255,255,255,.7); }
+.ed-export { height: 44px; padding: 0 18px; color: #111; text-shadow: none; font-weight: 700; font-size: 14px; white-space: nowrap; }
+.ed-photo { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; }
+.ed.is-full .ed-photo { background: #000; }
 #photo-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; transition: opacity .2s; }
 #ed-preview { position: absolute; left: 50%; top: 50%; width: var(--pw); height: var(--ph); object-fit: contain; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)); pointer-events: none; }
 #ed-preview.is-turned { width: var(--ph); height: var(--pw); }
@@ -136,14 +143,17 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .mini-btn { font-size: 12px; color: var(--sub); padding: 6px 2px; }
 .mini-btn:active { color: var(--accent); }
 .hist { width: 64px; height: 22px; touch-action: none; }
-.tabs { display: flex; align-items: center; gap: 2px; height: 46px; overflow-x: auto; padding: 0 calc(var(--edge) - 10px); background: var(--panel); scrollbar-width: none; }
+/* タブ: 横長の水の中を、白い水のつぶが選んだ所へ移る */
+.tabs-box { flex: none; height: 52px; margin: 10px 14px calc(14px + env(safe-area-inset-bottom)); }
+.tabs { display: flex; align-items: center; height: 100%; overflow-x: auto; padding: 0 6px; border-radius: 26px; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
-.tab { position: relative; flex: 0 0 auto; padding: 10px 10px 12px; font-size: 15px; font-weight: 500; color: var(--sub); white-space: nowrap; }
-.tab.is-on { color: var(--ink); }
-.tab.is-on::after { content: ""; position: absolute; left: 50%; bottom: 0; margin-left: -4px; border: 4px solid transparent; border-bottom-color: var(--accent); }
-.tab.is-changed::before { content: ""; position: absolute; right: 3px; top: 9px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
-.ed-panel { flex: 0 0 auto; height: 36vh; min-height: 236px; overflow-y: auto; background: var(--panel); padding: 4px 0 calc(16px + env(safe-area-inset-bottom)); touch-action: pan-y; }
-.ed.is-full .ed-top, .ed.is-full .ed-info, .ed.is-full .tabs, .ed.is-full .ed-panel { display: none; }
+.tab { position: relative; flex: 0 0 auto; height: 40px; padding: 0 15px; font-size: 14px; font-weight: 500; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.55); white-space: nowrap; transition: color .12s; }
+.tab.is-on { color: #111; text-shadow: none; font-weight: 700; }
+.tab.is-changed::before { content: ""; position: absolute; right: 6px; top: 7px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+/* つまみの入る板: 角の丸い水の板。中身だけが縦に流れる */
+.ed-panel-box { flex: 0 0 auto; height: 34vh; min-height: 226px; margin: 2px 14px 0; }
+.ed-panel { height: 100%; overflow-y: auto; border-radius: 28px; padding: 6px 0 12px; touch-action: pan-y; scrollbar-width: none; }
+.ed.is-full .ed-top, .ed.is-full .ed-info, .ed.is-full .tabs-box, .ed.is-full .ed-panel-box { display: none; }
 .sub-title { display: flex; align-items: baseline; gap: 10px; margin: 14px var(--edge) 4px; font-size: 12px; letter-spacing: .08em; color: var(--sub); }
 .sub-note { font-size: 10px; letter-spacing: 0; color: var(--faint); }
 
@@ -165,16 +175,18 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .sl-ticks::after { content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 1px; background: var(--hair); }
 .sl-zero { position: absolute; left: var(--zero); top: 2px; width: 1px; height: 9px; background: var(--ink); opacity: .45; }
 .sl-fill { position: absolute; top: 10px; height: 1px; background: var(--accent); opacity: .6; }
-.sl-thumb { position: absolute; top: 1px; width: 2px; height: 18px; margin-left: -1px; background: var(--accent); box-shadow: 0 0 0 3px var(--panel); }
+/* つまむ所は、まん丸の透明な水滴（下の目盛りが水滴ごしに大きく見える）。つかむと少しふくらむ */
+.sl-thumb { position: absolute; top: -1px; width: 22px; height: 22px; margin-left: -11px; transition: transform .28s cubic-bezier(.3,1.9,.5,1); }
+.sl.is-active .sl-thumb { transform: scale(1.35); }
 .sl-track-temp .sl-ticks::after { height: 2px; top: 6px; background: linear-gradient(90deg, #5d7fb0, #6f6b66 50%, #c99a52); }
 .sl-track-tint .sl-ticks::after { height: 2px; top: 6px; background: linear-gradient(90deg, #62ad6c, #6f6b66 50%, #c96ab8); }
 .sl-track-hue .sl-ticks::after { height: 2px; top: 6px; background: linear-gradient(90deg, #e05050, #e0c050, #50c050, #50c0c0, #5070e0, #c050c0, #e05050); }
 
 /* ルックの箱（フィルムの箱のように、窓からいまの写真が見える） */
 .cores { display: flex; gap: 12px; padding: 14px var(--edge) 6px; overflow-x: auto; scrollbar-width: none; }
-.core-box { flex: 0 0 106px; padding: 6px 6px 8px; border-radius: 6px; text-align: left; background: #0c0c0c; border: 1px solid var(--hair); transition: transform .15s, border-color .15s; }
+.core-box { flex: 0 0 106px; padding: 6px 6px 8px; border-radius: 12px; text-align: left; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); transition: transform .15s, border-color .15s; }
 .core-box.is-on { border-color: var(--accent); transform: translateY(-2px); }
-.core-window { aspect-ratio: 4 / 3; border-radius: 2px; overflow: hidden; background: #000; }
+.core-window { aspect-ratio: 4 / 3; border-radius: 7px; overflow: hidden; background: #000; }
 .core-cv { width: 100%; height: 100%; object-fit: cover; display: block; }
 .core-band { height: 3px; margin: 7px 0 6px; border-radius: 2px; background: linear-gradient(90deg, var(--c1), var(--c2)); }
 .core-name { font-size: 13px; font-weight: 500; white-space: nowrap; }
@@ -182,11 +194,11 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 /* 小さな選びボタン（色・範囲・縦横の比・レンズ） */
 .chips { display: flex; gap: 8px; padding: 12px var(--edge) 4px; overflow-x: auto; scrollbar-width: none; }
-.chip { position: relative; flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--hair); font-size: 12px; color: var(--sub); }
+.chip { position: relative; flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.2); font-size: 12px; color: rgba(255,255,255,.7); }
 .chip.is-on { color: var(--ink); border-color: var(--ink); }
 .chip.is-changed::after { content: ""; position: absolute; right: -1px; top: -1px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .chip.color { width: 30px; height: 30px; padding: 0; border-radius: 50%; background: var(--chip); border: 2px solid transparent; }
-.chip.color.is-on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--panel) inset; }
+.chip.color.is-on { border-color: var(--ink); box-shadow: 0 0 0 2px rgba(0,0,0,.6) inset; }
 .curve { padding: 0 var(--edge); }
 .curve .chips { padding-left: 0; padding-right: 0; }
 .curve .chip.is-on { border-color: var(--chip); color: var(--chip); }
@@ -196,7 +208,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .toggle-row, .radio-row { display: flex; align-items: center; gap: 12px; padding: 12px var(--edge); font-size: 14px; }
 .toggle-row > span, .radio-row > span { flex: 1; display: flex; flex-direction: column; }
 .toggle-row small, .radio-row small { color: var(--sub); font-size: 11px; margin-top: 2px; }
-.toggle { appearance: none; width: 42px; height: 24px; border-radius: 12px; background: var(--hair); position: relative; transition: background .15s; }
+.toggle { appearance: none; width: 42px; height: 24px; border-radius: 12px; background: rgba(255,255,255,.2); position: relative; transition: background .15s; }
 .toggle::after { content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--ink); transition: transform .15s; }
 .toggle:checked { background: var(--accent); }
 .toggle:checked::after { transform: translateX(18px); background: #000; }
@@ -204,22 +216,24 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .radio-row input:checked { border-color: var(--accent); background: radial-gradient(var(--accent) 45%, transparent 50%); }
 
 /* 下から出る板・知らせ */
-.sheet-back { position: fixed; inset: 0; background: rgba(0,0,0,.55); opacity: 0; transition: opacity .2s; z-index: 10; }
+.sheet-back { position: fixed; inset: 0; background: rgba(0,0,0,.3); opacity: 0; transition: opacity .2s; z-index: 10; }
 .sheet-back.is-on { opacity: 1; }
-.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; background: #0b0b0b; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; padding: 8px 0 calc(18px + env(safe-area-inset-bottom)); transform: translateY(100%); transition: transform .22s cubic-bezier(.2,.8,.2,1); max-height: 86vh; overflow-y: auto; }
+/* 下から出る板: 角の丸い水の板が、下から浮かび上がる。中身だけが縦に流れる */
+.sheet { position: fixed; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 11; transform: translateY(calc(100% + 40px)); transition: transform .32s cubic-bezier(.25,1.25,.4,1); color: #fff; }
 .sheet.is-on { transform: none; }
-.sheet-grip { width: 36px; height: 4px; border-radius: 2px; background: var(--faint); margin: 4px auto 12px; }
+.sheet-in { max-height: 84vh; overflow-y: auto; border-radius: 28px; padding: 8px 0 14px; scrollbar-width: none; }
+.sheet-grip { width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.35); margin: 4px auto 12px; }
 .sheet-title { padding: 0 var(--edge) 6px; font-size: 16px; font-weight: 700; letter-spacing: .08em; }
 .sheet-body { padding-bottom: 4px; }
 .sheet-body .btn-primary { width: calc(100% - 2 * var(--edge)); margin: 14px var(--edge) 0; }
 .sheet-body .note { margin-top: 2px; }
-.toast { position: fixed; left: var(--edge); right: var(--edge); bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 20; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 12px; background: #121212; border: 1px solid var(--hair); box-shadow: 0 8px 30px rgba(0,0,0,.6); font-size: 13px; line-height: 1.65; transform: translateY(140%); transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+.toast { position: fixed; left: var(--edge); right: var(--edge); bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 20; display: flex; align-items: center; gap: 14px; min-height: 48px; padding: 10px 20px; font-size: 13px; line-height: 1.65; transform: translateY(140%); transition: transform .32s cubic-bezier(.25,1.25,.4,1); }
 .toast:not(.is-on) { visibility: hidden; opacity: 0; transition: transform .25s cubic-bezier(.2,.8,.2,1), opacity .2s, visibility 0s .25s; }
 .toast.is-on { transform: none; }
 .toast-text { flex: 1; }
 .toast-btn { color: var(--accent); font-weight: 700; padding: 4px 2px; }
 .fatal { padding: 48px var(--edge); }
-.menu-row { display: block; width: 100%; text-align: left; padding: 14px var(--edge); font-size: 14px; border-top: 1px solid var(--line); }
+.menu-row { display: block; width: 100%; text-align: left; padding: 14px var(--edge); font-size: 14px; border-top: 1px solid rgba(255,255,255,.1); }
 .menu-row small { display: block; color: var(--sub); font-size: 11px; margin-top: 2px; }
 .menu-row:disabled { opacity: .35; }
 .menu-row.is-danger { color: var(--accent); }

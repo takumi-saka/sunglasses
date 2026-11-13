@@ -1,6 +1,7 @@
 // 編集の画面（2026-11-05）。
 // 写真の上: 押している間は元の画、2 回たたくと全画面、2 本指でつまむと拡大、拡大中は 1 本指で動かす。
 // 下の板: 核の箱・つまみ（よく使う／明るさ／色／色ごと／グレーディング／効果／細部／切り抜き）。
+import { indicator, water } from "./water.js";
 import { defaultParams, lookParams, lookState, sunCoreOf, sunGainOf, SUN_CORES } from "../engine/engine.js";
 import { shotInfo } from "../engine/exif.js";
 import * as bridge from "./bridge.js";
@@ -70,6 +71,14 @@ export class Editor {
     document.getElementById("ed-redo").onclick = () => this.redo();
     document.getElementById("ed-export").onclick = () => this.exportSheet();
     document.getElementById("ed-more").onclick = () => this.moreSheet();
+    // 水の部品（2026-11-13）: 上のボタン、つまみの入る板、タブ
+    water(document.getElementById("ed-back"));
+    water(document.getElementById("ed-steps"));
+    water(document.getElementById("ed-more"));
+    water(document.getElementById("ed-export"), { kind: "white" });
+    water(document.getElementById("ed-panel-box"), { radius: 28, press: false });
+    water(document.getElementById("ed-tabs-box"));
+    this.tabInd = indicator(this.tabs);
     this.coreChip.onclick = () => this.showGroup("core");
     this.oneBtn.onclick = () => this.toggleOneToOne();
     // 明るさの山を押している間だけ、白飛び（赤）と黒つぶれ（青）を色で出す
@@ -90,6 +99,7 @@ export class Editor {
     this.root.classList.remove("is-full");
     this.updateLand();
     document.getElementById("ed-name").textContent = item.name || "";
+    document.getElementById("ed-bg").style.backgroundImage = thumbSrc ? `url("${thumbSrc}")` : "none"; // 後ろに敷く、ぼかした写真
     // 撮った日時: 2024年7月18日 14:07（普通の写真アプリと同じ書き方）
     const dt = item.dateTaken ? new Date(item.dateTaken) : null;
     document.getElementById("ed-sub").textContent = dt ? `${dt.getFullYear()}年${dt.getMonth() + 1}月${dt.getDate()}日 ${dt.getHours()}:${String(dt.getMinutes()).padStart(2, "0")}` : "";
@@ -426,6 +436,7 @@ export class Editor {
       class: "tab" + (g.id === this.group ? " is-on" : "") + (this.params && this.groupChanged(g) ? " is-changed" : ""),
       onClick: () => this.showGroup(g.id),
     }, g.name)));
+    this.tabInd.to(this.tabs.querySelector(".is-on"));
     // 上のルック名: Cinema に Aftersun を足しているときは、足した物と量も出す（例: Cinema ＋ Aftersun Blue 40）。「自動」は、何も選んでいないときだけ
     const p = this.params, st = lookState(p || AUTO);
     const sunName = st.sun ? this.engine.coreById(st.sun).name : "";
