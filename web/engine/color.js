@@ -244,15 +244,21 @@ export function sceneOf(meta, key) {
 //     lights: 場面が lights[1] より暗いと、白が高すぎる時の底を下げていく（lights[0] で night.floor。暗い中の灯り・店・看板を白く飛ばさない）
 //     isoMax: 撮ったままの明るさから持ち上げるのは、ISO が isoMax 相当になる所まで（高い ISO の暗い写真を何段も持ち上げて、ざらつきと紫かぶりを出さない）
 export function coreEv(small, key, core, env, weights = null, scene = null) {
-  const ev = meterEv(small, key, core, env, weights, scene), N = scene && core.meter && core.meter.night;
+  const ev = meterEv(small, key, core, env, weights, scene), N = scene && nightOf(core);
   // 倍率 (0.18 / key) * 2^ev が、isoMax / ISO を超えないようにする
   return N && N.isoMax ? Math.min(ev, Math.log2((N.isoMax / scene.iso) * (key / 0.18))) : ev;
 }
+// 夜の決まりの置き場。meter のある核（シネマ）は meter.night、meter の無い核（Aftersun）は核の night
+const nightOf = (core) => (core.meter ? core.meter.night : core.night) || null;
 function meterEv(small, key, core, env, weights, scene) {
   const m = core.meter;
-  if (!m) return searchEv((e) => medianCore(small, key, e, core.cpu, env.ap0ToAp1, weights), env.targetL + core.lift);
-  const N = scene ? m.night : null;
+  const N = scene ? nightOf(core) : null;
   const ramp = (r) => (N && r ? clamp((r[1] - scene.ev) / (r[1] - r[0]), 0, 1) : 0);
+  if (!m) {
+    // meter の無い核（Aftersun）。夜の決まりは dark（目指す真ん中の明るさを下げる）と isoMax だけを使う（2026-11-13）
+    const t = env.targetL + core.lift;
+    return searchEv((e) => medianCore(small, key, e, core.cpu, env.ap0ToAp1, weights), N ? t + (Math.min(N.target, t) - t) * ramp(N.dark) : t);
+  }
   const target = N ? m.target + (N.target - m.target) * ramp(N.dark) : m.target;
   const P = skyParts(small, key, env.ap0ToSrgb, env.neutralCurve, m.skyDeep?.[0], m.skyDeep?.[1]);
   const k = P.sky.length, sw = m.skyWeight ?? 1;

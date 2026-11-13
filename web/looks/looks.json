@@ -210,7 +210,15 @@
    "texture": 0.0,
    "clarity": 0.0,
    "vignette": 0.0,
-   "sunGain": 1.0
+   "sunGain": 1.0,
+   "night": {
+    "dark": [
+     -4,
+     1.6
+    ],
+    "target": 10,
+    "isoMax": 12800
+   }
   },
   {
    "id": "deepblue",
@@ -299,7 +307,15 @@
    "texture": 0.0,
    "clarity": 0.0,
    "vignette": 0.0,
-   "sunGain": 1.0
+   "sunGain": 1.0,
+   "night": {
+    "dark": [
+     -4,
+     1.6
+    ],
+    "target": 10,
+    "isoMax": 12800
+   }
   },
   {
    "id": "aqua",
@@ -384,7 +400,15 @@
    "texture": 0.0,
    "clarity": 0.0,
    "vignette": 0.0,
-   "sunGain": 1.0
+   "sunGain": 1.0,
+   "night": {
+    "dark": [
+     -4,
+     1.6
+    ],
+    "target": 10,
+    "isoMax": 12800
+   }
   },
   {
    "id": "aftersun2",
