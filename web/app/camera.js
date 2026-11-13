@@ -15,7 +15,7 @@ import * as C from "../engine/color.js";
 import { defaultParams, lookParams, sunCoreOf, SUN_CORES } from "../engine/engine.js";
 import * as bridge from "./bridge.js";
 import { pref, setEdit } from "./store.js";
-import { h, ring, toast } from "./ui.js";
+import { h, ring, sheet, toast } from "./ui.js";
 
 const FRAMES = [["1.85", "1.85:1"], ["thirds", "三分割"], ["off", "オフ"]];
 const SETTINGS = {
@@ -26,6 +26,8 @@ const SETTINGS = {
   autoJpeg: [false, true],
 };
 const log2 = (x) => Math.log(x) / Math.LN2;
+// 拡大（2026-11-13）。倍率の札と、つまんで拡大できる上の倍率。RAW を切り抜く拡大なので、2 倍で画素は 4 分の 1、4 倍で 16 分の 1 になる
+const ZOOM_STEPS = [1, 2, 3], ZOOM_LIMIT = 4;
 const onOff = (b) => (b ? "オン" : "オフ");
 // 右下のルックで、たたくたびに替わる順（2026-11-06）。名前は looks.json の核の名前を使う
 // 2026-11-10 型のフィルム（deepblue＝Aftersun Blue、aqua＝Aftersun Aqua）を Aftersun の次に足した
@@ -127,6 +129,7 @@ export class Camera {
       count: $("cam-count"), readout: $("cam-readout"), hist: $("cam-hist"), thumb: $("cam-thumb"), shutter: $("cam-shutter"),
       coreBtn: $("cam-core"), looks: $("cam-looks"), ev: $("cam-ev"), pro: $("cam-pro"), lenses: $("cam-lenses"), msg: $("cam-msg"), bubble: $("cam-bubble"),
     };
+    this.els.readout.addEventListener("click", () => this.lensInfo());
     $("cam-back").onclick = () => this.onBack();
     for (const key of Object.keys(SETTINGS)) this.wheel($("cam-set-" + (key === "autoJpeg" ? "jpeg" : key)), key);
     this.els.shutter.onclick = () => this.shoot();
@@ -267,7 +270,13 @@ export class Camera {
       return;
     }
     const info = JSON.parse(bridge.cameraInfo() || "{}");
-    this.cams = (info.cameras || []).filter((c) => c.raw).sort((a, b) => (a.eq35 || 99) - (b.eq35 || 99));
+    this.camInfo = info;
+    const bad = pref("cameraBadLens") || [];
+    const all = (info.cameras || []).filter((c) => c.raw);
+    const listed = all.filter((c) => !c.parent);
+    // 個別のレンズ（超広角・望遠など。版 5 の APK が知らせる）は、同じ画角のカメラがもう出ている時と、前に開けなかった時は出さない
+    const extra = all.filter((c) => c.parent && !bad.includes(c.id) && !listed.some((m) => Math.abs((m.eq35 || 0) - (c.eq35 || 0)) <= 2));
+    this.cams = [...listed, ...extra.filter((c, i) => extra.findIndex((x) => Math.abs((x.eq35 || 0) - (c.eq35 || 0)) <= 2) === i)].sort((a, b) => (a.eq35 || 99) - (b.eq35 || 99));
     if (!this.cams.length) {
       this.fallback();
       return;
@@ -279,6 +288,7 @@ export class Camera {
     this.meterAt = null;
     this.expo = { auto: true, display: 0, frozen: null, at: 0, remainder: 0 };
     this.cEvNow = 0;
+    this.zoom = 1;
     this.fitPro();
     this.buildControls();
     this.layoutView();
@@ -331,12 +341,68 @@ export class Camera {
     bridge.cameraCall("cameraSetRect", r.x, r.y, r.w, r.h);
   }
 
+  // 拡大できる上の倍率。APK（版 5 から）が知らせる値と ZOOM_LIMIT の小さいほう。古い APK・拡大できないカメラは 1
+  zoomMax() {
+    return Math.min(ZOOM_LIMIT, (this.opened && this.opened.zoomMax) || 1);
+  }
+
+  // 拡大（普通のカメラアプリと同じ: 2 本の指でつまむ・倍率の札をたたく）。RAW は全体が写り、開いた時にこの倍率で切り抜かれる（切り抜きの画面で戻せる）
+  setZoom(z, quiet = false) {
+    const max = this.zoomMax();
+    z = Math.round(C.clamp(z, 1, max) * 10) / 10;
+    if (z === this.zoom) return;
+    const crossed = ZOOM_STEPS.some((v) => (this.zoom < v) !== (z < v));
+    this.zoom = z;
+    bridge.cameraCall("cameraSetZoom", z);
+    if (!quiet || crossed) bridge.haptic("detent");
+    this.renderLenses();
+  }
+
+  // レンズの情報（「RAW ◯MP」の字をたたくと出る）。このスマホで、アプリから見えるカメラと、開けなかったレンズを字で出す。
+  // 実機でしか分からないので、望遠などが使えない時に、ここの字を写して調べる
+  lensInfo() {
+    const info = this.camInfo || {}, bad = pref("cameraBadLens") || [];
+    const lines = [
+      `窓口の版 ${bridge.bridgeVersion()}`,
+      `一覧に出るカメラ: ${(info.listed || []).join("、") || "（古い APK では出ません）"}`,
+      `今のカメラ: ${this.cam ? this.cam.id : "-"}／拡大できる上の倍率: ${(this.opened && this.opened.zoomMax) || "（なし）"}`,
+      `前に開けなかったレンズ: ${bad.join("、") || "なし"}`,
+      "",
+      ...(info.cameras || []).map((c) => [
+        `カメラ ${c.id}${c.parent ? `（${c.parent} の中の個別のレンズ）` : ""}`,
+        `  35mm 換算 ${c.eq35 || "?"}mm／RAW ${c.raw ? "撮れる" : "撮れない"}（${(c.rawSizes || []).join("、") || "大きさなし"}）`,
+        `  まとめカメラ ${c.logical ? "はい" : "いいえ"}／中のレンズ ${(c.physical || []).join("、") || "なし"}／高画素 ${c.ultraHighRes ? "はい" : "いいえ"}／拡大の幅 ${(c.zoomRange || []).join("〜") || "?"}`,
+      ].join("\n")),
+    ];
+    if (info.error) lines.push("読めなかった理由: " + info.error);
+    const text = lines.join("\n");
+    sheet("レンズの情報", h("div", { class: "cam-lensinfo" },
+      h("pre", {}, text),
+      h("div", { class: "sheet-actions" },
+        h("button", { class: "chip", onClick: () => navigator.clipboard && navigator.clipboard.writeText(text).then(() => toast("写しました"), () => toast("写せませんでした")) }, "字を写す"),
+        bad.length ? h("button", { class: "chip", onClick: () => {
+          pref("cameraBadLens", []);
+          toast("開けなかったレンズの覚えを消しました。撮る画面を開き直すと、札がまた出ます。");
+        } }, "開けなかったレンズをもう一度試す") : null)));
+  }
+
   renderLenses() {
-    this.els.lenses.replaceChildren(...(this.cams.length > 1 ? this.cams.map((c) => h("button", {
+    const max = this.zoomMax();
+    const steps = max > 1 ? ZOOM_STEPS.filter((v) => v <= max + 0.01) : [];
+    // 今の倍率にいちばん近い札を光らせ、ちょうどでない時はその札に今の倍率を出す（1.4× など）
+    const near = steps.reduce((a, v) => (v <= this.zoom + 0.001 ? v : a), steps[0]);
+    const fmt = (v) => (Math.abs(v - Math.round(v)) < 0.05 ? Math.round(v) : v.toFixed(1)) + "×";
+    const zoomChips = steps.map((v) => h("button", {
+      class: "chip num cam-zoom" + (v === near ? " is-on" : ""),
+      onClick: () => this.setZoom(v),
+    }, v === near ? fmt(this.zoom) : fmt(v)));
+    this.els.lenses.replaceChildren(...zoomChips, ...(this.cams.length > 1 ? this.cams.map((c) => h("button", {
       class: "chip num" + (c.id === this.cam.id ? " is-on" : ""),
       onClick: () => {
         if (c.id === this.cam.id) return;
+        this.prevCam = this.cam;
         this.cam = c;
+        this.zoom = 1;
         pref("cameraId", c.id);
         this.renderLenses();
         // レンズごとに出せる範囲が違うので、S・ISO・ピントは自動に戻す
@@ -442,6 +508,9 @@ export class Camera {
     if (!this.active || !d) return;
     if (d.state === "open") {
       this.opened = d;
+      this.prevCam = null;
+      this.zoom = 1;
+      this.renderLenses();
       this.showMsg("");
       this.buildControls();
       this.updateCount();
@@ -458,12 +527,26 @@ export class Camera {
       }
       if (this.opened && this.opened.rawSize) {
         const [rw, rh] = this.opened.rawSize.split("x").map(Number);
-        this.els.readout.textContent = "RAW " + Math.round((rw * rh) / 1e6) + "MP";
+        // 拡大している時は、切り抜いたあとに残る画素数を出す（2 倍で 4 分の 1）
+        const mp = (rw * rh) / 1e6 / (this.zoom * this.zoom);
+        this.els.readout.textContent = "RAW " + (mp >= 10 ? Math.round(mp) : mp.toFixed(1)) + "MP";
       }
       const s = this.sens ? this.sens.s : d.exposure;
       this.els.badge.textContent = d.locked ? "AE/AFロック" : s && s > 1 / 15 ? "手ぶれに注意（" + fmtS(s) + "）" : "";
       this.els.badge.hidden = !this.els.badge.textContent;
       this.renderPro();
+    } else if (d.state === "error" && this.cam && this.cam.parent && this.prevCam) {
+      // 個別のレンズ（超広角・望遠など）が、このスマホではアプリから開けなかった。覚えておいて、元のレンズに戻す
+      pref("cameraBadLens", [...new Set([...(pref("cameraBadLens") || []), this.cam.id])]);
+      const name = this.cam.eq35 ? this.cam.eq35 + "mm" : "このレンズ";
+      this.cams = this.cams.filter((c) => c.id !== this.cam.id);
+      this.cam = this.prevCam;
+      this.prevCam = null;
+      pref("cameraId", this.cam.id);
+      this.renderLenses();
+      toast(`${name} は、このスマホではアプリから使えませんでした。元のレンズに戻しました。倍率の札か、2 本の指でつまんで拡大できます。`, [], 7000);
+      const r = this.rect();
+      bridge.cameraCall("cameraOpen", this.cam.id, r.x, r.y, r.w, r.h);
     } else if (d.state === "error" || d.state === "closed") {
       this.showMsg(d.message || "カメラが止まりました。", [["開き直す", () => this.open()]]);
     }
@@ -978,6 +1061,8 @@ export class Camera {
     this.pendingLook = {
       ...this.lookP(),
       exposure: this.expo.auto || !this.autoNow ? 0 : Math.round(C.clamp(log2(applied / this.autoNow[main]), -3, 3) * 100) / 100,
+      // 拡大して撮った写真は、開いた時にその倍率で真ん中を切り抜く（RAW には全体が残る。切り抜きの画面で戻せる）
+      ...(this.zoom > 1 ? { crop: { cx: 0.5, cy: 0.5, w: 1 / this.zoom, h: 1 / this.zoom, angle: 0 } } : {}),
     };
     bridge.haptic("confirm");
     this.view.classList.add("is-flash");
@@ -1053,8 +1138,35 @@ export class Camera {
   viewGestures() {
     const v = this.view;
     let timer = 0, start = null, longDone = false;
+    // 2 本の指でつまんで拡大（指どうしの距離の比で倍率を変える）。つまんでいる間は、たたく・長押しを止める
+    const pts = new Map();
+    let pinch = null;
+    const dist = () => {
+      const [a, b] = [...pts.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    const drop = (e) => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) pinch = null;
+    };
     v.addEventListener("pointerdown", (e) => {
       if (!this.opened) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) {
+        clearTimeout(timer);
+        start = null;
+        pinch = { d: Math.max(dist(), 1), z: this.zoom };
+      }
+    }, true);
+    v.addEventListener("pointermove", (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && pts.size === 2) this.setZoom(pinch.z * (dist() / pinch.d), true);
+    }, true);
+    v.addEventListener("pointerup", drop, true);
+    v.addEventListener("pointercancel", drop, true);
+    v.addEventListener("pointerdown", (e) => {
+      if (!this.opened || pts.size > 1) return;
       start = { x: e.clientX, y: e.clientY };
       longDone = false;
       timer = setTimeout(() => {

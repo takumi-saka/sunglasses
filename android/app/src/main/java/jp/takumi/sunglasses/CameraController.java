@@ -85,6 +85,8 @@ final class CameraController {
     private float evStep = 1f / 3f;
     private int evMin, evMax, evIndex;
     private boolean locked;
+    // 拡大（版 5）。RAW は拡大しても全体が写るので、撮る画面の見え方・明るさ・ピントだけに効く。Android 11 以上で使う
+    private float zoom = 1f, zoomMax = 1f;
     // 手動の設定（null は自動）。版 3
     private Integer manIso;
     private Long manExp;
@@ -121,11 +123,43 @@ final class CameraController {
         JSONObject out = new JSONObject();
         JSONArray cams = new JSONArray();
         try {
+            // 一覧に出るカメラと、その中にまとめられている個別のレンズ（超広角・望遠など）を並べる（版 5）。
+            // 個別のレンズは、スマホによってはアプリから開けない（開けなかった時はページ側で元のレンズに戻す）
+            List<String> ids = new ArrayList<>();
+            Map<String, String> parent = new HashMap<>();
+            JSONArray listed = new JSONArray();
             for (String id : mgr.getCameraIdList()) {
-                CameraCharacteristics c = mgr.getCameraCharacteristics(id);
+                listed.put(id);
+                if (!ids.contains(id)) ids.add(id);
+            }
+            out.put("listed", listed);
+            for (String id : new ArrayList<>(ids)) {
+                try {
+                    for (String p : mgr.getCameraCharacteristics(id).getPhysicalCameraIds()) {
+                        if (!ids.contains(p)) {
+                            ids.add(p);
+                            parent.put(p, id);
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // 読めないカメラは飛ばす
+                }
+            }
+            for (String id : ids) {
+                CameraCharacteristics c;
+                try {
+                    c = mgr.getCameraCharacteristics(id);
+                } catch (Exception e) {
+                    continue;
+                }
                 Integer facing = c.get(CameraCharacteristics.LENS_FACING);
                 if (facing == null || facing != CameraCharacteristics.LENS_FACING_BACK) continue;
                 JSONObject o = new JSONObject();
+                if (parent.containsKey(id)) o.put("parent", parent.get(id));
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    Range<Float> zr = c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
+                    if (zr != null) o.put("zoomRange", new JSONArray(new double[]{zr.getLower(), zr.getUpper()}));
+                }
                 int[] caps = c.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
                 StreamConfigurationMap map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
                 Size[] raws = map == null ? null : map.getOutputSizes(ImageFormat.RAW_SENSOR);
@@ -241,6 +275,12 @@ final class CameraController {
                 evStep = es == null ? 1f / 3f : es.floatValue();
                 evIndex = 0;
                 locked = false;
+                zoom = 1f;
+                zoomMax = 1f;
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    Range<Float> zr = chars.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
+                    if (zr != null) zoomMax = Math.max(1f, zr.getUpper());
+                }
                 if (rawSize != null) {
                     rawReader = ImageReader.newInstance(rawSize.getWidth(), rawSize.getHeight(), ImageFormat.RAW_SENSOR, 3);
                     rawReader.setOnImageAvailableListener(r -> {
@@ -343,6 +383,7 @@ final class CameraController {
                 preview.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB);
             }
             preview.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, evIndex);
+            applyZoom(preview);
             applyManual(preview);
             repeat();
         } catch (Exception e) {
@@ -397,6 +438,7 @@ final class CameraController {
             o.put("evMin", evMin * evStep);
             o.put("evMax", evMax * evStep);
             o.put("evStep", evStep);
+            o.put("zoomMax", zoomMax);
             Integer so = chars.get(CameraCharacteristics.SENSOR_ORIENTATION);
             o.put("sensorOrientation", so == null ? 90 : so);
             events.emit("sunglasses:camera", o.toString());
@@ -455,6 +497,26 @@ final class CameraController {
                 Log.w(TAG, "ev", e);
             }
         });
+    }
+
+    // ---- 拡大（版 5）----
+    // 撮る画面の見え方を z 倍にする。明るさとピントも、見えている範囲で測る。RAW は全体が写る（切り抜きはページ側が覚える）
+    void setZoom(float z) {
+        if (bg == null) return;
+        bg.post(() -> {
+            zoom = Math.max(1f, Math.min(z, zoomMax));
+            if (preview == null || session == null) return;
+            try {
+                applyZoom(preview);
+                repeat();
+            } catch (Exception e) {
+                Log.w(TAG, "zoom", e);
+            }
+        });
+    }
+
+    private void applyZoom(CaptureRequest.Builder b) {
+        if (android.os.Build.VERSION.SDK_INT >= 30 && zoomMax > 1f) b.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom);
     }
 
     // nx・ny は撮る画面の枠の中の位置（0〜1、左上が原点）。lock なら明るさとピントを固定する
@@ -605,6 +667,7 @@ final class CameraController {
                 b.addTarget(previewSurface);
                 b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
                 b.set(CaptureRequest.CONTROL_AE_LOCK, locked);
+                applyZoom(b);
                 if (preview.get(CaptureRequest.CONTROL_AE_REGIONS) != null) b.set(CaptureRequest.CONTROL_AE_REGIONS, preview.get(CaptureRequest.CONTROL_AE_REGIONS));
                 Integer afMode = preview.get(CaptureRequest.CONTROL_AF_MODE);
                 if (afMode != null) b.set(CaptureRequest.CONTROL_AF_MODE, afMode);

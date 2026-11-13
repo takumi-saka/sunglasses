@@ -37,10 +37,13 @@ await ctx.addInitScript(() => {
     version: () => 3, appInfo: () => JSON.stringify({ bridge: 3, model: "代わり" }),
     mediaPermission: () => "full", listRaw: () => "[]", takeOpened: () => "[]", takeLaunch: () => "",
     cameraPermission: () => "granted", requestCameraPermission: () => rec("reqCam"),
-    cameraInfo: () => JSON.stringify({ cameras: [{ id: "0", raw: true, rawSizes: ["4096x3072"], eq35: 23, iso: [50, 6400], exposure: [0.0001, 1], minFocus: 10, manualSensor: true, manualPost: true }] }),
+    cameraInfo: () => JSON.stringify({ cameras: [{ id: "0", raw: true, rawSizes: ["4096x3072"], eq35: 23, iso: [50, 6400], exposure: [0.0001, 1], minFocus: 10, manualSensor: true, manualPost: true },
+      { id: "3", parent: "0", raw: true, rawSizes: ["4096x3072"], eq35: 100, iso: [50, 6400], exposure: [0.0001, 1], minFocus: 10, manualSensor: true, manualPost: true }] }),
+    cameraSetZoom: (z) => rec("zoom", +z.toFixed(2)),
     cameraOpen: (id, x, y, w, h) => {
       rec("open", id, Math.round(w), Math.round(h));
-      setTimeout(() => fire("sunglasses:camera", { state: "open", id, raw: true, rawSize: "4096x3072", evMin: -4, evMax: 4, evStep: 1 / 3 }), 100);
+      if (id === "3") return setTimeout(() => fire("sunglasses:camera", { state: "error", message: "カメラを開けませんでした（代わり）" }), 100);
+      setTimeout(() => fire("sunglasses:camera", { state: "open", id, raw: true, rawSize: "4096x3072", evMin: -4, evMax: 4, evStep: 1 / 3, zoomMax: 8 }), 100);
       clearInterval(timer);
       timer = setInterval(() => {
         fire("sunglasses:camera-sample", { w: 64, h: 48, raw: sample(window.__sceneLevel), look: "", preset: true });
@@ -294,6 +297,48 @@ log.横の吹き出し = { 見出し: await page.locator("#cam-bubble small").te
 await shot("c8_横");
 log.横の回り = await page.evaluate(() => [".cam-pro-cell", "#cam-badge", ".cam-set"].map((s) => getComputedStyle(document.querySelector(s)).transform));
 log.使っている書体 = await page.evaluate(() => [...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family + " " + f.weight));
+// ---- 拡大（2026-11-13）: 倍率の札、2 本の指でつまむ、撮った写真の切り抜き、開けないレンズからの戻り ----
+await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 0 } })));
+await page.waitForTimeout(400);
+const chips = () => page.evaluate(() => [...document.querySelectorAll("#cam-lenses .chip")].map((c) => c.textContent + (c.classList.contains("is-on") ? "*" : "")));
+log.拡大 = { はじめの札: await chips() };
+await page.locator("#cam-lenses .cam-zoom", { hasText: "2×" }).click();
+await page.waitForTimeout(200);
+log.拡大.二倍をたたく = { 札: await chips(), 呼び出し: (await calls("zoom")).slice(-1) };
+// 2 本の指でつまむ: 指のあいだを 100px → 150px に広げる（2 倍 → 3 倍）
+await page.evaluate(() => {
+  const v = document.getElementById("cam-view"), r = v.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const ev = (type, id, x) => v.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: cy, bubbles: true, pointerType: "touch", isPrimary: id === 11 }));
+  ev("pointerdown", 11, cx - 50);
+  ev("pointerdown", 12, cx + 50);
+  for (let i = 1; i <= 5; i++) ev("pointermove", 12, cx + 50 + i * 10);
+  ev("pointerup", 12, cx + 100);
+  ev("pointerup", 11, cx - 50);
+});
+await page.waitForTimeout(300);
+log.拡大.つまんだあと = { 札: await chips(), 呼び出し: (await calls("zoom")).slice(-2), ピントの呼び出しが増えていない: (await calls("focus")).length };
+await shot("c9_拡大");
+log.拡大.画素数の字 = await page.locator("#cam-readout").textContent();
+// 画素数の字をたたく → レンズの情報が出る
+await page.click("#cam-readout");
+await page.waitForTimeout(500);
+log.拡大.レンズの情報 = (await page.locator(".cam-lensinfo pre").textContent().catch(() => "（出ない）")).split("\n").slice(0, 6);
+await shot("c9b_レンズの情報");
+await page.click(".sheet-back");
+await page.waitForTimeout(400);
+// 拡大したまま撮る → 保存した編集に切り抜きが入る
+await page.click("#cam-shutter");
+await page.waitForTimeout(900);
+log.拡大.撮った写真の切り抜き = await page.evaluate(async () => {
+  const { getEdit } = await import("/app/store.js");
+  const e = await getEdit("external_primary:77:1");
+  return e && e.params && e.params.crop;
+});
+// 望遠の札（開けないレンズ）をたたく → 元のレンズに戻り、札が消える
+await page.locator("#cam-lenses .chip", { hasText: "100mm" }).click();
+await page.waitForTimeout(700);
+log.拡大.開けないレンズ = { 札: await chips(), 知らせ: await page.locator(".toast-text").last().textContent().catch(() => ""), 開いた順: (await calls("open")).slice(-2).map((c) => c[1]) };
+await shot("c10_開けないレンズ");
 fs.writeFileSync(path.join(outDir, "記録.json"), JSON.stringify({ log, errors }, null, 1));
 console.log(JSON.stringify({ log, errors }, null, 1));
 await browser.close();

@@ -90,7 +90,7 @@ public class MainActivity extends Activity {
     private static final String HOST = BuildConfig.HOST;
     private static final String START_URL = BuildConfig.START_URL;
     private static final String LOCAL = BuildConfig.LOCAL_PREFIX;
-    private static final int BRIDGE_VERSION = 4; // 2: 撮る機能、3: 核を 2 つ混ぜる・手動のシャッター速度など（2026-11-05）、4: 写真の削除（2026-11-06）
+    private static final int BRIDGE_VERSION = 5; // 5: 拡大・個別のレンズ（2026-11-13）、 2: 撮る機能、3: 核を 2 つ混ぜる・手動のシャッター速度など（2026-11-05）、4: 写真の削除（2026-11-06）
     private static final String ACTION_CAMERA = "jp.takumi.sunglasses.CAMERA";
     private static final int REQ_PICK = 1;
     private static final int REQ_CHOOSER = 2;
@@ -1042,6 +1042,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void cameraSetEv(float ev) {
             camera.setEv(ev);
+        }
+
+        @JavascriptInterface
+        public void cameraSetZoom(float z) {
+            camera.setZoom(z);
         }
 
         @JavascriptInterface
