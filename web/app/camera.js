@@ -133,13 +133,11 @@ export class Camera {
     // 水の部品（2026-11-13）。撮る画面は、透けない濃い水（映像には何も重ねない）
     const solid = { kind: "solid" };
     water($("cam-back"), solid);
-    for (const el of this.root.querySelectorAll(".cam-set")) water(el, solid); // 項目ごとに 1 つのつぶ
+    // ガラスにするのは、操作の入口だけ（戻る・倍率・シャッター・ルック）。上の設定・数字・目盛りはガラスにしない（本人 11/13）
     water($("cam-lens-box"), { ...solid, press: false });
-    water(this.els.ev, { ...solid, radius: 30, inset: [10, 3], press: false }); // 輪の入る大きなつぶ
     water(this.els.shutter, solid);
     water($("cam-shutter-core"), { kind: "white" });
     water(this.els.coreBtn, solid);
-    water(this.els.thumb, solid);
     $("cam-back").onclick = () => this.onBack();
     for (const key of Object.keys(SETTINGS)) this.wheel($("cam-set-" + (key === "autoJpeg" ? "jpeg" : key)), key);
     this.els.shutter.onclick = () => this.shoot();
@@ -613,7 +611,6 @@ export class Camera {
     this.els.pro.replaceChildren(...PRO.map(([key, label]) => {
       const b = h("b");
       const cell = h("button", { class: "cam-pro-cell rot", onClick: () => this.toggleProRing(key) }, h("small", {}, label), b);
-      water(cell, { kind: "solid" });
       this.proCells[key] = { cell, b };
       return cell;
     }));
