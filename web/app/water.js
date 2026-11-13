@@ -10,7 +10,7 @@ export const MOVE = { f0: 5.5, zeta: 0.17, grow: 0.5, nMax: 4, amp: 0.22, p: 1.0
 // ===== 水の見た目 =====
 // bez: 曲がりの幅（半径に対する割合）　pow: 曲がりの立ち上がり　scale: 曲がりの強さ　chroma: ふちで色が分かれる量
 // bright・tint: 水ごしの絵の暗さ　wide: ふちの暗さ・明るさの帯の幅　sat: 水ごしの絵のあざやかさ
-export const LOOK = { pow: 1.8, sat: 1.15, chroma: 0.22, tint: "rgba(6,16,22,.08)", bez: 0.9, scale: 66, bright: 0.9, wide: 1.5 };
+export const LOOK = { pow: 1.8, sat: 1.15, chroma: 0.22, tint: "rgba(8,16,20,.42)", blur: 7, bez: 0.9, scale: 66, bright: 0.9, wide: 1.5 }; // tint・blur: 水の裏の濁り（本人 11/13「完全な透明だとダメ」）。つまみの水滴だけは澄んだまま
 
 // 曲がりを使うか。SVG の地図で後ろを曲げる作りは Chrome 系だけ。重い・崩れる時は、localStorage の sg-water を flat にすると曲がりだけ外せる
 let stored = "";
@@ -96,7 +96,8 @@ export class Blob {
     }
     if (kind === "glass") {
       const inner = this.inner = el.querySelector(".gl");
-      inner.style.background = L.tint;
+      inner.style.background = shape.lens ? "rgba(6,16,22,.08)" : L.tint;
+      const fog = shape.lens || !L.blur ? "" : ` blur(${L.blur}px)`;
       if (REFRACT) {
         // 後ろの絵を曲げる地図（止まっている時の形で 1 回だけ作る。揺れている間は、切り抜きだけが動く）。赤＝横、緑＝縦のずれ
         const mg = 8, W = Math.round(w + mg * 2), H = Math.round(h + mg * 2), lens = shape.lens;
@@ -125,11 +126,11 @@ export class Blob {
           `<feBlend in="c0" in2="c1" mode="screen" result="c01"/><feBlend in="c01" in2="c2" mode="screen" result="d"/><feColorMatrix in="d" type="saturate" values="${L.sat}"/>`;
         defs.append(f);
         inner.style.width = W + "px"; inner.style.height = H + "px";
-        inner.style.backdropFilter = `url(#${id}m) brightness(${L.bright})`;
+        inner.style.backdropFilter = `url(#${id}m)${fog} brightness(${L.bright})`;
         this.mg = mg;
       } else {
         inner.style.width = w + "px"; inner.style.height = h + "px";
-        inner.style.backdropFilter = `brightness(${L.bright}) saturate(${L.sat})`;
+        inner.style.backdropFilter = `${fog} brightness(${L.bright}) saturate(${L.sat})`.trim();
         this.mg = 0;
       }
     }

@@ -134,8 +134,7 @@ export class Camera {
     // 水の部品（2026-11-13）。撮る画面は、透けない濃い水（映像には何も重ねない）
     const solid = { kind: "solid" };
     water($("cam-back"), solid);
-    water($("cam-sets"), { ...solid, radius: 24 });
-    water(this.els.pro, { ...solid, radius: 24, inset: [10, 2], press: false });
+    for (const el of this.root.querySelectorAll(".cam-set")) water(el, { ...solid, radius: 18 }); // 項目ごとに 1 つのつぶ
     water(this.els.shutter, solid);
     water($("cam-shutter-core"), { kind: "white" });
     water(this.els.coreBtn, { ...solid, radius: 22 });
@@ -612,6 +611,7 @@ export class Camera {
     this.els.pro.replaceChildren(...PRO.map(([key, label]) => {
       const b = h("b");
       const cell = h("button", { class: "cam-pro-cell rot", onClick: () => this.toggleProRing(key) }, h("small", {}, label), b);
+      water(cell, { kind: "solid", radius: 18 });
       this.proCells[key] = { cell, b };
       return cell;
     }));

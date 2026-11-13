@@ -256,10 +256,9 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-top { display: flex; align-items: center; gap: 8px; height: 58px; padding: 0 10px; }
 .cam-top .icon-btn { flex: none; width: 44px; height: 44px; }
 /* 上の設定: 5 つを同じ幅に固定（値の字数が変わっても横にずれない）。値の下にローレットの線 */
-.cam-sets { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; height: 48px; padding: 0 6px; }
-.cam-set { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; padding: 2px 0; font-size: 10.5px; letter-spacing: 0; color: var(--sub); white-space: nowrap; touch-action: none; }
-.cam-set b, .cam-pro-cell b { position: relative; display: block; min-width: 56px; padding: 3px 0 7px; text-align: center; font-weight: 500; font-size: 13px; color: var(--ink); white-space: nowrap; }
-.cam-set b::after, .cam-pro-cell b::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--knurl-line); -webkit-mask: var(--fade); mask: var(--fade); }
+.cam-sets { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: 5px; }
+.cam-set { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 46px; font-size: 9.5px; letter-spacing: 0; color: var(--sub); white-space: nowrap; touch-action: none; }
+.cam-set b, .cam-pro-cell b { position: relative; display: block; padding: 1px 0 0; text-align: center; font-weight: 500; font-size: 13px; color: var(--ink); white-space: nowrap; }
 .cam-set b.roll-up { animation: cam-roll-up .16s ease-out; }
 .cam-set b.roll-down { animation: cam-roll-down .16s ease-out; }
 @keyframes cam-roll-up { from { transform: translateY(9px); opacity: .15; } to { transform: none; opacity: 1; } }
@@ -294,13 +293,13 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-lensinfo pre { margin: 0 var(--edge) 12px; max-height: 46vh; overflow: auto; font: 11px/1.6 ui-monospace, monospace; white-space: pre-wrap; color: var(--ink, #ddd); }
 .cam-lensinfo .sheet-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 var(--edge) 12px; }
 /* 手で決める撮り方（S・ISO・WB・F・AF）: 手で決めた値は琥珀色、自動はいまの値を薄く */
-.cam-pro { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; height: 52px; padding: 0 14px; }
-.cam-pro-cell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 4px 0; }
+.cam-pro { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: 5px; height: 52px; padding: 0 10px; }
+.cam-pro-cell { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 46px; }
 .cam-pro-cell small { font: 10.5px var(--mono); color: var(--sub); }
 .cam-pro-cell.is-auto b { color: var(--sub); }
 .cam-pro-cell.is-man b { color: var(--accent); }
 .cam-pro-cell.is-open small { color: var(--ink); }
-.cam-pro-cell.is-open::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -4px; border: 4px solid transparent; border-top-color: var(--accent); }
+.cam-pro-cell.is-open::after { content: ""; position: absolute; left: 50%; bottom: -4px; margin-left: -4px; border: 4px solid transparent; border-top-color: var(--accent); }
 /* 露出と Sun Level（と、手で決める項目）の輪。高さを固定して、輪を入れかえても撮る画面の大きさが変わらないように */
 .cam-ev { min-height: 76px; padding-top: 2px; }
 .cam-auto { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--hair); font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--sub); }
@@ -348,6 +347,7 @@ html.is-camera, html.is-camera body { background: transparent; }
 #cam-badge { transform: translateX(-50%) rotate(var(--rot, 0deg)); transition: transform .25s; }
 /* 横に倒したとき、上の設定は回ると縦に長くなるので、見出しの字を小さくして画面の端で切れないようにする */
 html.is-land-cam .cam-set > span { font-size: 8.5px; }
+html.is-land-cam .cam-set, html.is-land-cam .cam-pro-cell { transform: rotate(var(--rot, 0deg)) scale(.84); }
 html.is-land-cam .cam-core { max-width: 92px; padding: 6px 10px; }
 html.is-land-cam .cam-core .cam-core-hint { display: none; }
 /* 値の吹き出し: 輪を回している間と、ルックを替えたとき */
