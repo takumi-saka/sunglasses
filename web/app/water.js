@@ -216,11 +216,13 @@ export function water(el, o = {}) {
     const w = el.offsetWidth, h = el.offsetHeight;
     if (!w || !h || (w === w0 && h === h0)) return;
     w0 = w; h0 = h; if (b) b.destroy();
-    const i = o.inset || 0, sw = w - i * 2, sh = h - i * 2;
+    const [ix, iy] = [].concat(o.inset || 0, o.inset || 0), sw = w - ix * 2, sh = h - iy * 2; // inset は数か [横, 縦]
     b = new Blob(el, { x: 0, y: 0, w, h }, { cx: w / 2, cy: h / 2, w: sw, h: sh, r: o.radius != null ? Math.min(o.radius, sw / 2, sh / 2) : Math.min(sw, sh) / 2, lens: o.lens }, o.kind || "glass");
     if (o.onBuild) o.onBuild(b);
   };
   new ResizeObserver(build).observe(el); build();
+  // 箱の中身を丸ごと入れ替えられると水が外れるので、戻す
+  new MutationObserver(() => { if (b && !b.el.isConnected) el.prepend(b.el); }).observe(el, { childList: true });
   if (o.press !== false) {
     const pos = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
     el.addEventListener("pointerdown", (e) => b && b.press(...pos(e)));

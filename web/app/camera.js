@@ -16,6 +16,7 @@ import { defaultParams, lookParams, sunCoreOf, SUN_CORES } from "../engine/engin
 import * as bridge from "./bridge.js";
 import { pref, setEdit } from "./store.js";
 import { h, ring, sheet, toast } from "./ui.js";
+import { water } from "./water.js";
 
 const FRAMES = [["1.85", "1.85:1"], ["thirds", "三分割"], ["off", "オフ"]];
 const SETTINGS = {
@@ -130,6 +131,14 @@ export class Camera {
       coreBtn: $("cam-core"), looks: $("cam-looks"), ev: $("cam-ev"), pro: $("cam-pro"), lenses: $("cam-lenses"), msg: $("cam-msg"), bubble: $("cam-bubble"),
     };
     this.els.readout.addEventListener("click", () => this.lensInfo());
+    // 水の部品（2026-11-13）。撮る画面は、透けない濃い水（映像には何も重ねない）
+    const solid = { kind: "solid" };
+    water($("cam-back"), solid);
+    water($("cam-sets"), { ...solid, radius: 24 });
+    water(this.els.pro, { ...solid, radius: 24, inset: [10, 2], press: false });
+    water(this.els.shutter, solid);
+    water($("cam-shutter-core"), { kind: "white" });
+    water(this.els.coreBtn, { ...solid, radius: 22 });
     $("cam-back").onclick = () => this.onBack();
     for (const key of Object.keys(SETTINGS)) this.wheel($("cam-set-" + (key === "autoJpeg" ? "jpeg" : key)), key);
     this.els.shutter.onclick = () => this.shoot();
@@ -184,10 +193,12 @@ export class Camera {
       el.hidden = true;
       return;
     }
-    el.replaceChildren(h("div", { class: "cam-looks-list" }, h("small", {}, "ルック"),
+    const list = h("div", { class: "cam-looks-list" }, h("small", {}, "ルック"),
       h("button", { class: "cam-look" + (this.cinema ? " is-on" : ""), onClick: () => this.setLook(!this.cinema, this.sun, true) }, "Cinema　" + (this.cinema ? "オン" : "オフ")),
       h("small", {}, "Aftersun を足す"),
-      ...[null, ...SUN_CORES].map((id) => h("button", { class: "cam-look" + (id === this.sun ? " is-on" : ""), onClick: () => this.setLook(this.cinema, id) }, id ? this.familyName(id) : "なし"))));
+      ...[null, ...SUN_CORES].map((id) => h("button", { class: "cam-look" + (id === this.sun ? " is-on" : ""), onClick: () => this.setLook(this.cinema, id) }, id ? this.familyName(id) : "なし")));
+    el.replaceChildren(list);
+    water(list, { kind: "solid", radius: 22, press: false });
     el.hidden = false;
     bridge.haptic("tick");
   }

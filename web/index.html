@@ -53,7 +53,7 @@
 <section id="camera" class="screen cam" hidden>
   <header class="cam-top">
     <button id="cam-back" class="icon-btn rot" aria-label="一覧へ"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
-    <div class="cam-sets">
+    <div id="cam-sets" class="cam-sets">
       <button id="cam-set-frame" class="cam-set rot"><span>枠</span><b></b></button>
       <button id="cam-set-timer" class="cam-set rot"><span>タイマー</span><b></b></button>
       <button id="cam-set-zebra" class="cam-set rot"><span>ゼブラ</span><b></b></button>
@@ -77,7 +77,7 @@
   <div id="cam-ev" class="cam-ev"></div>
   <div class="cam-bottom">
     <button id="cam-thumb" class="cam-thumb rot" aria-label="撮った写真を開く"></button>
-    <button id="cam-shutter" class="cam-shutter" aria-label="撮影"></button>
+    <button id="cam-shutter" class="cam-shutter" aria-label="撮影"><span id="cam-shutter-core" class="shoot-core"></span></button>
     <button id="cam-core" class="cam-core rot" aria-label="ルック（たたくと一覧、長押しで元の画）"></button>
   </div>
 </section>
