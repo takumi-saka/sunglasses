@@ -57,7 +57,6 @@
       <button id="cam-set-frame" class="cam-set rot"><span>枠</span><b></b></button>
       <button id="cam-set-timer" class="cam-set rot"><span>タイマー</span><b></b></button>
       <button id="cam-set-zebra" class="cam-set rot"><span>ゼブラ</span><b></b></button>
-      <button id="cam-set-sound" class="cam-set rot"><span>シャッター音</span><b></b></button>
       <button id="cam-set-jpeg" class="cam-set rot"><span>JPEG</span><b></b></button>
     </div>
   </header>
@@ -72,7 +71,7 @@
     <div id="cam-msg" class="cam-msg" hidden></div>
   </div>
   <!-- 写真には何も重ねない（本人 11/6）。レンズの切り替えは残りの枚数の行に入れて、1行減らす -->
-  <div class="cam-info"><span id="cam-readout" class="cam-readout"></span><div id="cam-lenses" class="cam-lenses"></div><span id="cam-count" class="cam-count"></span><canvas id="cam-hist" class="hist"></canvas></div>
+  <div class="cam-info"><div class="cam-meta"><span id="cam-readout" class="cam-readout"></span><span id="cam-count" class="cam-count"></span></div><div id="cam-lens-box" class="cam-lens-box"><div id="cam-lenses" class="cam-lenses"></div></div><div class="cam-histbox"><canvas id="cam-hist" class="hist"></canvas></div></div>
   <div id="cam-pro" class="cam-pro"></div>
   <div id="cam-ev" class="cam-ev"></div>
   <div class="cam-bottom">

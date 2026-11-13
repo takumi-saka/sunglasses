@@ -23,7 +23,6 @@ const SETTINGS = {
   frame: FRAMES.map((f) => f[0]),
   timer: [0, 3, 10],
   zebra: [true, false],
-  sound: [true, false],
   autoJpeg: [false, true],
 };
 const log2 = (x) => Math.log(x) / Math.LN2;
@@ -85,7 +84,7 @@ export class Camera {
     this.meterAt = null; // たたいた所（撮る画面の枠の中の 0〜1）。明るさをそこで重く測る
     this.openKey = null; // 手で決める撮り方のうち、輪を出している項目
     this.pro = { s: null, iso: null, focus: null, wb: pref("cameraWb") || "auto", af: pref("cameraAf") || "continuous" };
-    this.settings = { frame: "1.85", timer: 0, zebra: true, sound: true, autoJpeg: false, ...(pref("camera") || {}) };
+    this.settings = { frame: "1.85", timer: 0, zebra: true, autoJpeg: false, ...(pref("camera") || {}), sound: false }; // シャッター音はいつも鳴らさない（本人 11/13。項目もなくした）
     // 核を3つにしたとき（2026-11-06）、前の Aftersun を選んでいた人は、1回だけ新しい Aftersun に移す
     if (!pref("cameraFamilyV2")) {
       if ((pref("cameraFamily") || "aftersun") === "aftersun") pref("cameraFamily", "aftersun2");
@@ -134,10 +133,13 @@ export class Camera {
     // 水の部品（2026-11-13）。撮る画面は、透けない濃い水（映像には何も重ねない）
     const solid = { kind: "solid" };
     water($("cam-back"), solid);
-    for (const el of this.root.querySelectorAll(".cam-set")) water(el, { ...solid, radius: 18 }); // 項目ごとに 1 つのつぶ
+    for (const el of this.root.querySelectorAll(".cam-set")) water(el, solid); // 項目ごとに 1 つのつぶ
+    water($("cam-lens-box"), { ...solid, press: false });
+    water(this.els.ev, { ...solid, radius: 30, inset: [10, 3], press: false }); // 輪の入る大きなつぶ
     water(this.els.shutter, solid);
     water($("cam-shutter-core"), { kind: "white" });
-    water(this.els.coreBtn, { ...solid, radius: 22 });
+    water(this.els.coreBtn, solid);
+    water(this.els.thumb, solid);
     $("cam-back").onclick = () => this.onBack();
     for (const key of Object.keys(SETTINGS)) this.wheel($("cam-set-" + (key === "autoJpeg" ? "jpeg" : key)), key);
     this.els.shutter.onclick = () => this.shoot();
@@ -611,7 +613,7 @@ export class Camera {
     this.els.pro.replaceChildren(...PRO.map(([key, label]) => {
       const b = h("b");
       const cell = h("button", { class: "cam-pro-cell rot", onClick: () => this.toggleProRing(key) }, h("small", {}, label), b);
-      water(cell, { kind: "solid", radius: 18 });
+      water(cell, { kind: "solid" });
       this.proCells[key] = { cell, b };
       return cell;
     }));

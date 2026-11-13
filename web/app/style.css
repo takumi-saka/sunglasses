@@ -251,13 +251,13 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-dial-extra { display: inline-flex; align-items: center; gap: 14px; }
 .cam-tabs { display: inline-flex; gap: 16px; }
 .cam-tab { position: relative; padding: 4px 0; font-size: 14px; color: var(--sub); }
-.cam-tab.is-on { color: var(--ink); }
-.cam-tab.is-on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 1px; background: var(--accent); }
-.cam-top { display: flex; align-items: center; gap: 8px; height: 58px; padding: 0 10px; }
+.cam-tab.is-on { color: var(--ink); font-weight: 700; }
+
+.cam-top { display: flex; align-items: center; gap: 6px; height: 58px; padding: 0 10px; }
 .cam-top .icon-btn { flex: none; width: 44px; height: 44px; }
 /* 上の設定: 5 つを同じ幅に固定（値の字数が変わっても横にずれない）。値の下にローレットの線 */
-.cam-sets { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: 5px; }
-.cam-set { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 46px; font-size: 9.5px; letter-spacing: 0; color: var(--sub); white-space: nowrap; touch-action: none; }
+.cam-sets { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; gap: 6px; }
+.cam-set { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-width: 0; height: 44px; font-size: 9.5px; letter-spacing: 0; color: var(--sub); white-space: nowrap; touch-action: none; }
 .cam-set b, .cam-pro-cell b { position: relative; display: block; padding: 1px 0 0; text-align: center; font-weight: 500; font-size: 13px; color: var(--ink); white-space: nowrap; }
 .cam-set b.roll-up { animation: cam-roll-up .16s ease-out; }
 .cam-set b.roll-down { animation: cam-roll-down .16s ease-out; }
@@ -282,26 +282,31 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-msg { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 24px var(--edge); background: var(--body); text-align: center; line-height: 1.85; font-size: 14px; }
 .cam-msg[hidden] { display: none; }
 .cam-msg-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
-.cam-info { display: flex; align-items: center; gap: 12px; height: 30px; padding: 0 var(--edge); font-size: 12px; }
-.cam-readout { min-width: 0; font: 12px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cam-count { margin-left: auto; flex: none; white-space: nowrap; color: var(--sub); }
-.cam-info .hist { width: 64px; height: 20px; }
-.cam-lenses { flex: 1; min-width: 0; display: flex; justify-content: safe center; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-.cam-lenses:empty { visibility: hidden; }
-.cam-lenses .chip { flex: none; padding: 3px 9px; font-size: 11px; border-color: transparent; background: #16191b; color: #fff; }
+.cam-info { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; font-size: 12px; }
+.cam-meta { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; line-height: 1.2; }
+.cam-histbox { flex: 1 1 0; min-width: 0; display: flex; justify-content: flex-end; }
+.cam-readout { font: 10.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cam-count { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--sub); }
+.cam-info .hist { flex: none; width: 56px; height: 20px; }
+/* 倍率とレンズ: 1 つの細長いつぶの中に札を並べ、選んでいる札を白に */
+.cam-lens-box { flex: 0 1 auto; min-width: 0; height: 30px; }
+.cam-lens-box:has(.cam-lenses:empty) { visibility: hidden; }
+.cam-lenses { display: flex; align-items: center; gap: 2px; height: 100%; padding: 0 3px; border-radius: 15px; overflow-x: auto; scrollbar-width: none; }
+
+.cam-lenses .chip { flex: none; height: 24px; padding: 0 10px; font-size: 11px; border: 0; background: none; color: #fff; }
 .cam-lenses .chip.is-on { background: rgba(255,255,255,.94); color: #111; font-weight: 700; }
 .cam-lensinfo pre { margin: 0 var(--edge) 12px; max-height: 46vh; overflow: auto; font: 11px/1.6 ui-monospace, monospace; white-space: pre-wrap; color: var(--ink, #ddd); }
 .cam-lensinfo .sheet-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 var(--edge) 12px; }
 /* 手で決める撮り方（S・ISO・WB・F・AF）: 手で決めた値は琥珀色、自動はいまの値を薄く */
-.cam-pro { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: 5px; height: 52px; padding: 0 10px; }
-.cam-pro-cell { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; height: 46px; }
-.cam-pro-cell small { font: 10.5px var(--mono); color: var(--sub); }
+.cam-pro { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: 6px; height: 50px; padding: 0 10px; }
+.cam-pro-cell { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-width: 0; height: 44px; }
+.cam-pro-cell small { font: 9.5px var(--mono); color: var(--sub); }
 .cam-pro-cell.is-auto b { color: var(--sub); }
 .cam-pro-cell.is-man b { color: var(--accent); }
 .cam-pro-cell.is-open small { color: var(--ink); }
 .cam-pro-cell.is-open::after { content: ""; position: absolute; left: 50%; bottom: -4px; margin-left: -4px; border: 4px solid transparent; border-top-color: var(--accent); }
 /* 露出と Sun Level（と、手で決める項目）の輪。高さを固定して、輪を入れかえても撮る画面の大きさが変わらないように */
-.cam-ev { min-height: 76px; padding-top: 2px; }
+.cam-ev { min-height: 78px; padding: 5px 10px 3px; }
 .cam-auto { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--hair); font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--sub); }
 .cam-auto.is-on { background: var(--accent); border-color: var(--accent); color: #000; }
 .cam-meter { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--hair); font-size: 11px; letter-spacing: .06em; color: var(--sub); }
@@ -321,13 +326,15 @@ html.is-camera, html.is-camera body { background: transparent; }
 .rg.is-auto .rg-val { color: var(--sub); }
 .rg.is-man .rg-val { color: var(--accent); }
 .cam-bottom { flex: none; margin-top: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; padding: 8px var(--edge) calc(18px + env(safe-area-inset-bottom)); }
-.cam-thumb { justify-self: start; width: 52px; height: 52px; border-radius: 16px; background: #121212 center / cover no-repeat; opacity: .35; }
+/* 撮った写真: 濃い水の丸の中に、丸く切った写真 */
+.cam-thumb { position: relative; justify-self: start; width: 54px; height: 54px; border-radius: 50%; background: center / 0 0 no-repeat; opacity: .35; }
+.cam-thumb::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: inherit; background-size: cover; }
 .cam-thumb.is-on { opacity: 1; }
 /* シャッター: 濃い水の輪の中に、白い水のつぶ */
 .cam-shutter { width: 78px; height: 78px; display: grid; place-items: center; }
 .cam-shutter .shoot-core { transition: transform .08s; }
 .cam-shutter:active .shoot-core { transform: scale(.93); }
-.cam-core { justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; max-width: calc(100% - 10px); padding: 6px 14px 7px; text-align: right; touch-action: none; -webkit-touch-callout: none; }
+.cam-core { justify-self: end; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 0; min-height: 54px; max-width: calc(100% - 6px); padding: 5px 18px 6px; text-align: right; touch-action: none; -webkit-touch-callout: none; }
 .cam-core small { font-size: 10.5px; color: var(--sub); }
 .cam-core b { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
 .cam-core-hint { margin-top: 1px; font-size: 10px; color: var(--sub); }
@@ -347,11 +354,14 @@ html.is-camera, html.is-camera body { background: transparent; }
 #cam-badge { transform: translateX(-50%) rotate(var(--rot, 0deg)); transition: transform .25s; }
 /* 横に倒したとき、上の設定は回ると縦に長くなるので、見出しの字を小さくして画面の端で切れないようにする */
 html.is-land-cam .cam-set > span { font-size: 8.5px; }
-html.is-land-cam .cam-set, html.is-land-cam .cam-pro-cell { transform: rotate(var(--rot, 0deg)) scale(.84); }
+/* 横に構えた時は、つぶごと回して縦長のつぶにする（行の高さに収まる幅にする） */
+html.is-land-cam .cam-set { width: 54px; justify-self: center; }
+html.is-land-cam .cam-pro-cell { width: 47px; justify-self: center; }
+html.is-land-cam .cam-pro-cell b { font-size: 11.5px; }
 html.is-land-cam .cam-core { max-width: 92px; padding: 6px 10px; }
 html.is-land-cam .cam-core .cam-core-hint { display: none; }
 /* 値の吹き出し: 輪を回している間と、ルックを替えたとき */
-.cam-bubble { position: absolute; left: 50%; top: 40%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 20px 12px; border-radius: 14px; background: rgba(0,0,0,.5); pointer-events: none; opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)); transition: opacity .18s, transform .25s; }
+.cam-bubble { position: absolute; left: 50%; top: 40%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 24px 12px; border-radius: 26px; background: rgba(0,0,0,.5); pointer-events: none; opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)); transition: opacity .18s, transform .25s; }
 .cam-bubble.is-on { opacity: 1; }
 .cam-bubble small { font-size: 11px; color: rgba(238,234,226,.75); }
 .cam-bubble b { font: 500 30px var(--mono); letter-spacing: 0; color: var(--ink); white-space: nowrap; }

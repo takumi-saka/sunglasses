@@ -119,19 +119,17 @@ await page.evaluate(() => (window.__sceneLevel = 35));
 await page.waitForTimeout(2500);
 log.自動の露出_暗い景色 = await val(0);
 
-// 1. 上の設定の幅: 値を変えても、5 つの位置と幅が変わらない
+// 1. 上の設定の幅: 値を変えても、4 つの位置と幅（シャッター音の項目は 2026-11-13 になくした）が変わらない
 const boxes = () => page.evaluate(() => [...document.querySelectorAll(".cam-set")].map((e) => {
   const r = e.getBoundingClientRect();
   return [Math.round(r.left), Math.round(r.width)];
 }));
 const before = await boxes();
-await page.click("#cam-set-sound");
 await page.click("#cam-set-jpeg");
 await page.click("#cam-set-timer");
 log.上の設定の値 = await page.evaluate(() => [...document.querySelectorAll(".cam-set b")].map((b) => b.textContent));
 log.上の設定の幅は同じ = JSON.stringify(before) === JSON.stringify(await boxes());
 log.上の設定の位置と幅 = before;
-await page.click("#cam-set-sound");
 await page.click("#cam-set-jpeg");
 await page.click("#cam-set-timer");
 await page.click("#cam-set-timer");
