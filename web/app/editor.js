@@ -705,7 +705,7 @@ export class Editor {
       const blob = await this.engine.exportJpeg({ maxSide, quality: 0.95 });
       const name = (item.name || "photo").replace(/\.[^.]+$/, "") + "_sunglasses.jpg";
       const p = this.params;
-      const note = `Sunglasses: ${this.lookLabel(p)}, exposure ${p.exposure >= 0 ? "+" : ""}${p.exposure.toFixed(2)}`;
+      const note = bridge.recordNote(`Sunglasses: ${this.lookLabel(p)}, exposure ${p.exposure >= 0 ? "+" : ""}${p.exposure.toFixed(2)}`, p);
       const res = await bridge.saveJpeg(blob, { name, folder: "DCIM/Camera", item, copyLocation, note });
       if (!res.ok) throw new Error(res.error || "保存できませんでした");
       bridge.haptic("confirm");

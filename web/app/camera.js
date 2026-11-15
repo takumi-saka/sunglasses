@@ -1129,7 +1129,7 @@ export class Camera {
           await this.engine.openRaw(buf);
           this.engine.setParams(p);
           const blob = await this.engine.exportJpeg({ maxSide: 0, quality: 0.95 });
-          await bridge.saveJpeg(blob, { name: it.name.replace(/\.dng$/i, ".jpg"), folder: "DCIM/Camera", item: it });
+          await bridge.saveJpeg(blob, { name: it.name.replace(/\.dng$/i, ".jpg"), folder: "DCIM/Camera", item: it, note: bridge.recordNote("Sunglasses shot", p) });
         } catch (e) {
           toast("JPEG を作れませんでした。（" + e.message + "）");
         }

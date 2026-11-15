@@ -58,6 +58,14 @@ export function takeOpened() {
   return real() ? JSON.parse(real().takeOpened()) : [];
 }
 
+// 2026-11-15 JPEG に書き込む記録（ImageDescription）。あとで「どの設定で出た画か」を写真から読めるように、
+// 頭の言葉（人が読む用）のあとに、アプリの版と、ルック・つまみの値の全部を JSON で付ける。英数字だけにする
+export function recordNote(head, params) {
+  const ver = document.querySelector('meta[name="sg-version"]')?.content || "";
+  const json = JSON.stringify({ v: ver, params }).replace(/[\u007f-￿]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+  return `${head} | ${json}`;
+}
+
 // 書き出した JPEG を保存する。item は元の写真（撮影日時と撮影の情報を写すため）
 export async function saveJpeg(blob, { name, folder, item, copyLocation = false, note = "" }) {
   const B = real();
