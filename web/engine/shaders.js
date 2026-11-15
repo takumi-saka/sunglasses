@@ -430,6 +430,7 @@ uniform sampler2D uH;
 uniform vec2 uTexel;
 uniform float uStep;
 uniform float uAmt;
+uniform float uLum;   // 明るさのざらつきを消す割合（uAmt に掛ける。ふつうは 0.5、色だけならすときは 0）
 uniform float uSigma;
 void main() {
   vec3 c = sqrt(max(texture(uH, vUv).rgb, 0.0));
@@ -451,7 +452,7 @@ void main() {
     }
   }
   // 明るさのざらつきは半分だけ消す（細かい所を残す）。色の点々は全部消す
-  vec3 v = max(mix(cl, sl / wl, uAmt * 0.5) + mix(c - cl, sc / wc, uAmt), 0.0);
+  vec3 v = max(mix(cl, sl / wl, uAmt * uLum) + mix(c - cl, sc / wc, uAmt), 0.0);
   o = vec4(v * v, 1.0);
 }`);
 
@@ -496,7 +497,37 @@ uniform vec3 uOffset;
 uniform vec3 uRange;
 uniform vec3 uPaper;      // s, e0, nu
 uniform float uSat;
+uniform float uSep;       // ネガの上での色の分かれ方の倍率（1 でそのまま）
+uniform int uFinOn;
+uniform float uFin[15];   // 色の仕上げの値（並びは utsurun.js の P.fin の説明）
 const float LN10 = 2.302585092994046;
+// Oklab（線形 sRGB との行き来）
+const mat3 OK_M1 = mat3(0.4122214708, 0.2119034982, 0.0883024619, 0.5363325363, 0.6806995451, 0.2817188376, 0.0514459929, 0.1073969566, 0.6299787005);
+const mat3 OK_M2 = mat3(0.2104542553, 1.9779984951, 0.0259040371, 0.7936177850, -2.4285922050, 0.7827717662, -0.0040720468, 0.4505937099, -0.8086757660);
+const mat3 OK_M2I = mat3(1.0, 1.0, 1.0, 0.3963377774, -0.1055613458, -0.0894841775, 0.2158037573, -0.0638541728, -1.2914855480);
+const mat3 OK_M1I = mat3(4.0767416621, -1.2684380046, -0.0041960863, -3.3077115913, 2.6097574011, -0.7034186147, 0.2309699292, -0.3413193965, 1.7076147010);
+float sst(float a, float b, float x) { float t = clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+float hwin(float h, float a, float b, float c, float d) { return sst(a, b, h) * (1.0 - sst(c, d, h)); }
+// 色の仕上げ: 本物の写ルンですの写真の集まりに合わせた、印画紙のあとの色の癖（色の研究 2026-11-15）
+// (1) 色のない物の色を明るさ 3 段でずらす (2) 明るい青・明るい橙・暗い橙・緑の色あいを回す (3) 明るさごとの鮮やかさと、青・緑の鮮やかさ
+vec3 finishColor(vec3 lin) {
+  vec3 lab = OK_M2 * pow(max(OK_M1 * lin, 0.0), vec3(1.0 / 3.0));
+  float L = lab.x;
+  float wd = clamp((0.55 - L) / 0.3, 0.0, 1.0), wb = clamp((L - 0.65) / 0.25, 0.0, 1.0), wm = 1.0 - wd - wb;
+  float guard = sst(0.0, 0.12, L);
+  float a = lab.y + (uFin[0] * wd + uFin[2] * wm + uFin[4] * wb) * 0.004 * guard;
+  float b = lab.z + (uFin[1] * wd + uFin[3] * wm + uFin[5] * wb) * 0.004 * guard;
+  float C = length(vec2(a, b));
+  float h = C > 1e-7 ? degrees(atan(b, a)) : 0.0;
+  if (h < 0.0) h += 360.0;
+  float bright = sst(0.55, 0.8, L), dark = 1.0 - sst(0.3, 0.55, L);
+  float wblue = hwin(h, 185.0, 215.0, 255.0, 285.0), wwarm = hwin(h, 25.0, 50.0, 90.0, 115.0), wgreen = hwin(h, 105.0, 125.0, 150.0, 175.0);
+  float h2 = radians(h + uFin[9] * wblue * bright + uFin[11] * wwarm * bright + uFin[12] * wwarm * dark + uFin[13] * wgreen);
+  float k = uFin[6] * wd + uFin[7] * wm + uFin[8] * wb;
+  float C2 = C * k * (1.0 + (uFin[10] - 1.0) * wblue * sst(0.45, 0.75, L)) * (1.0 + (uFin[14] - 1.0) * wgreen);
+  vec3 lms = OK_M2I * vec3(L, C2 * cos(h2), C2 * sin(h2));
+  return clamp(OK_M1I * (lms * lms * lms), 0.0, 1.0);
+}
 void main() {
   vec2 c = (uToCrop * vec3(vUv, 1.0)).xy - 0.5;
   float r2 = dot(c * c, uR2);
@@ -521,10 +552,13 @@ void main() {
   float floorE = uFilm.x - uFilm.w;
   vec3 e = d / uGamma + uFilm.x + uToeD - uFilm.w;
   e = floorE + (e - floorE) * uGain + uOffset;
+  float em = (e.r + e.g + e.b) / 3.0;
+  e = em + (e - em) * uSep;
   vec3 Dp = uRange * pow(1.0 + uPaper.z * exp(uPaper.x * (e - uPaper.y) * LN10), vec3(-1.0 / uPaper.z));
   vec3 R = exp(-Dp * LN10);
   float Y = dot(R, vec3(0.2126, 0.7152, 0.0722));
   R = clamp(Y + (R - Y) * uSat, 0.0, 1.0);
+  if (uFinOn == 1) R = finishColor(R);
   o = vec4(l2s(R), 1.0);
 }`);
 

@@ -25,6 +25,9 @@
       // 確かめ用: 写ルンですの画角の切り抜き（utsCrop = 撮ったレンズの焦点距離 ÷ 32。1 なら縦横の比だけ）
       for (const n of Object.keys(UT.TUNE)) delete UT.TUNE[n];
       Object.assign(UT.TUNE, m.tune || {});
+      // 確かめ用: 写ルンですの決まり（UT.P）の値を、描き方ごとに差し替える
+      if (!window.__P0) window.__P0 = { ...UT.P };
+      Object.assign(UT.P, window.__P0, m.P || {});
       e.utsCache = null;
       if (m.utsCrop) p.crop = UT.frameCrop(im.w, im.h, m.utsCrop);
       // 確かめ用: 光の色を残す決まり（keepLight）を、描き方ごとに差し替える（null で残さない）。露光の覚えも捨てる

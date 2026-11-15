@@ -627,7 +627,16 @@ export class Engine {
     if (f.nr > 0) {
       // センサーのノイズ（暗い所で感度が上がった分のざらつきと色の点々）を、フィルムに当てる前に消す。粒はフィルムの粒だけにする
       const o = rt();
-      this._pass("utsNr", o, { uH: H, uTexel: [1 / bw, 1 / bh], uStep: Math.max(1, scale), uAmt: f.nr, uSigma: f.nrSigma });
+      this._pass("utsNr", o, { uH: H, uTexel: [1 / bw, 1 / bh], uStep: Math.max(1, scale), uAmt: f.nr, uLum: 0.5, uSigma: f.nrSigma });
+      this._give(H);
+      H = o;
+    }
+    // 色の分かれ方（sep）と暗い所の鮮やかさ（fin の s_d）は、センサーの色ノイズの消し残りと粒の色まで同じ倍率で強める。
+    // その倍率の分だけ、先に色だけを広めにならしておく（明るさの細かさは触らない）
+    const gc = (Q.sep ?? 1) * (Q.fin ? Q.fin[6] : 1);
+    if (gc > 1 && f.nrSigma) {
+      const o = rt();
+      this._pass("utsNr", o, { uH: H, uTexel: [1 / bw, 1 / bh], uStep: Math.max(1, scale) * 2, uAmt: 1 - 1 / gc, uLum: 0, uSigma: f.nrSigma });
       this._give(H);
       H = o;
     }
@@ -643,14 +652,17 @@ export class Engine {
       noise = this._blur(raw, 0.55);
       this._give(raw);
     }
+    // 粒の色も同じ倍率で強まるので、層ごとの分をその倍率で割り、減った分を共通の分に回す（明るさの粒はそのまま）
+    const gy = (1 - Q.grain_rho) / (gc * gc), gz = Q.grain_rho + (1 - Q.grain_rho - gy) / 3;
     const film = rt(), den = (VW * VW + VH * VH) / 4;
     this._pass("utsFilm", film, {
       uBlurA: A, uBlurB: B, uNoise: noise || A, uToCrop: toCrop, uR2: [(VW * VW) / den, (VH * VH) / den],
       uVig: Q.vig, uFlare: f.flare, uMix: UT.mixMatrix(Q), uGamma: F.gamma, uToeD: [Q.toe_d[0], 0, Q.toe_d[1]],
       uFilm: [F.x0, F.toe, F.dmax, F.xgray], uGrainOn: noise ? 1 : 0,
-      uGrain: [sigma, Math.sqrt(1 - Q.grain_rho) / norm, Math.sqrt(Q.grain_rho) / norm], uGrainShape: UT.GRAIN_SHAPE,
+      uGrain: [sigma, Math.sqrt(gy) / norm, Math.sqrt(Math.max(gz, 0)) / norm], uGrainShape: UT.GRAIN_SHAPE,
       uGain: f.gain, uOffset: f.offset, uRange: [Q.range + Q.rng_rb[0], Q.range, Q.range + Q.rng_rb[1]],
-      uPaper: [Q.s, Q.e0, Q.nu], uSat: Q.sat,
+      uPaper: [Q.s, Q.e0, Q.nu], uSat: Q.sat, uSep: Q.sep ?? 1,
+      uFinOn: Q.fin ? 1 : 0, uFin: Q.fin || [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1],
     });
     this._release([A, B, noise]);
     let rgb = film;
