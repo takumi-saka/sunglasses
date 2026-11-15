@@ -17,7 +17,9 @@ android {
         buildConfigField 'String', 'START_URL', '"https://takumi-saka.github.io/sunglasses/"'
         buildConfigField 'String', 'HOST', '"takumi-saka.github.io"'
         buildConfigField 'String', 'LOCAL_PREFIX', '"/sunglasses/__local/"'
-        manifestPlaceholders = [cleartext: 'false']
+        // 画面を APK の中から渡すか（試作の版だけ）
+        buildConfigField 'boolean', 'BUNDLED', 'false'
+        manifestPlaceholders = [cleartext: 'false', appLabel: 'サングラス']
         minSdk 29
         targetSdk 34
         // GitHub で作るたびに番号が上がるので、上から入れ直せる
@@ -46,6 +48,19 @@ android {
             buildConfigField 'String', 'LOCAL_PREFIX', '"/__local/"'
             manifestPlaceholders = [cleartext: 'true']
         }
+        // 試作（公開せずに実機で試す）: 画面を APK の中に入れ、別のアプリとして入れる（公開中の版と並べて置ける）。
+        // 住所は実在しない宛先で、アプリが APK の中のファイルを返す。署名は開発用の鍵
+        next {
+            initWith release
+            applicationIdSuffix '.next'
+            versionNameSuffix '-next'
+            signingConfig signingConfigs.debug
+            buildConfigField 'String', 'START_URL', '"https://next.sunglasses.invalid/"'
+            buildConfigField 'String', 'HOST', '"next.sunglasses.invalid"'
+            buildConfigField 'String', 'LOCAL_PREFIX', '"/__local/"'
+            buildConfigField 'boolean', 'BUNDLED', 'true'
+            manifestPlaceholders = [appLabel: 'サングラス 試作']
+        }
         release {
             minifyEnabled false
             signingConfig System.getenv('SG_KEYSTORE') ? signingConfigs.release : signingConfigs.debug
@@ -57,3 +72,12 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
+
+// 試作の版に入れる画面のファイル（web/ を build/webAssets/web へ写してから APK に入れる）
+def webAssets = layout.buildDirectory.dir('webAssets').get().asFile
+tasks.register('copyWebAssets', Copy) {
+    from '../../web'
+    into new File(webAssets, 'web')
+}
+android.sourceSets.next.assets.srcDir webAssets
+tasks.configureEach { t -> if (t.name != 'copyWebAssets' && t.name.contains('Next')) t.dependsOn('copyWebAssets') }

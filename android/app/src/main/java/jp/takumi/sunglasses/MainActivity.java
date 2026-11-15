@@ -370,7 +370,7 @@ public class MainActivity extends Activity {
     private WebResourceResponse intercept(Uri url) {
         if (url == null || !HOST.equals(url.getHost())) return null;
         String path = url.getPath();
-        if (path == null || !path.startsWith(LOCAL)) return null;
+        if (path == null || !path.startsWith(LOCAL)) return BuildConfig.BUNDLED ? asset(path) : null;
         List<String> seg = url.getPathSegments();  // （sunglasses,）__local, 種類, ...
         int b = seg.indexOf("__local");
         try {
@@ -392,6 +392,35 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             Log.w(TAG, "local " + path, e);
             return text(500, String.valueOf(e));
+        }
+    }
+
+    // 試作の版：画面のファイル（web/）を APK の中から渡す
+    private WebResourceResponse asset(String path) {
+        String p = path == null || path.isEmpty() ? "/" : path;
+        if (p.endsWith("/")) p += "index.html";
+        if (p.contains("..")) return text(404, "not found");
+        String ext = p.substring(p.lastIndexOf('.') + 1).toLowerCase(java.util.Locale.ROOT);
+        String mime;
+        switch (ext) {
+            case "html": mime = "text/html"; break;
+            case "js": case "mjs": mime = "text/javascript"; break;
+            case "css": mime = "text/css"; break;
+            case "json": mime = "application/json"; break;
+            case "wasm": mime = "application/wasm"; break;
+            case "woff2": mime = "font/woff2"; break;
+            case "txt": mime = "text/plain"; break;
+            case "svg": mime = "image/svg+xml"; break;
+            case "png": mime = "image/png"; break;
+            case "jpg": case "jpeg": mime = "image/jpeg"; break;
+            default: mime = "application/octet-stream";
+        }
+        boolean isText = mime.startsWith("text/") || mime.equals("application/json") || mime.equals("image/svg+xml");
+        try {
+            InputStream in = getAssets().open("web" + p);
+            return new WebResourceResponse(mime, isText ? "utf-8" : null, 200, "OK", headers(), in);
+        } catch (Exception e) {
+            return text(404, "not found");
         }
     }
 
