@@ -524,16 +524,7 @@ export class Editor {
       type: "checkbox", class: "toggle", checked: st.film ? "checked" : null,
       onChange: (e) => setFilm(e.target.checked),
     }));
-    // フラッシュをたいて撮った写真か（撮った時に自動で付く。違っていたら直せる）
-    const flashRow = h("label", { class: "toggle-row" }, h("span", {}, "フラッシュをたいた写真"), h("input", {
-      type: "checkbox", class: "toggle", checked: this.params.flash ? "checked" : null,
-      onChange: (e) => {
-        this.setParam("flash", e.target.checked);
-        this.commit();
-        bridge.haptic("tick");
-      },
-    }));
-    if (st.film) return [filmRow, flashRow, h("p", { class: "note" }, "フィルムと写真屋の処理で描いています。明るさは、撮った時の光の量で決まります（暗い所は暗く、にごって写ります）。")];
+    if (st.film) return [filmRow, h("p", { class: "note" }, "フィルムと写真屋の処理で描いています。明るい外は、撮った時の光の量のまま写ります。暗い所は、写る明るさまで持ち上げます。")];
     const cinemaRow = h("label", { class: "toggle-row" }, h("span", {}, "Cinema"), h("input", {
       type: "checkbox", class: "toggle", checked: st.cinema ? "checked" : null,
       onChange: (e) => apply(e.target.checked, st.sun, st.level),

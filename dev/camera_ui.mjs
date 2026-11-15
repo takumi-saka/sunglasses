@@ -371,6 +371,11 @@ await shot("c10_開けないレンズ");
   await page.click("#cam-core");
   await page.waitForTimeout(200);
   await page.evaluate(() => (window.__bridgeVersion = 6));
+  // フラッシュは上の設定の列で選ぶ（どのカメラでも同じ）
+  await page.click("#cam-set-flash");
+  await page.waitForTimeout(300);
+  log.写ルンです.フラッシュをたくにした = [await page.locator("#cam-set-flash b").textContent(), await page.locator("#cam-fixed-note").textContent()];
+  await shot("d02b_写ルンです_フラッシュ");
   await clear();
   await page.click("#cam-shutter");
   await page.waitForTimeout(1200);
@@ -383,6 +388,19 @@ await shot("c10_開けないレンズ");
   log.写ルンです.戻したあと = { 名前: await page.locator("#cam-core b").textContent(), 札: await chips(), 枠: await page.evaluate(() => document.getElementById("cam-frame").dataset.frame), 倍率: (await calls("zoom")).slice(-1)[0],
     枠の字: await page.locator("#cam-set-frame b").textContent(), つまみが出た: await page.evaluate(() => getComputedStyle(document.getElementById("cam-pro")).visibility === "visible" && document.getElementById("cam-fixed").hidden) };
   await shot("d03_サングラスへ戻した");
+  // サングラス（Cinema・Aftersun）でもフラッシュをたける
+  const caps = async () => (await page.evaluate(() => window.__calls.map((c) => c[0]))).filter((n) => n.startsWith("capture"));
+  await page.waitForTimeout(1500);
+  await clear();
+  await page.click("#cam-shutter");
+  await page.waitForTimeout(1500);
+  log.写ルンです.サングラスでたく = await caps();
+  await page.click("#cam-set-flash");
+  await page.waitForTimeout(300);
+  await clear();
+  await page.click("#cam-shutter");
+  await page.waitForTimeout(1500);
+  log.写ルンです.サングラスでオフ = [await page.locator("#cam-set-flash b").textContent(), await caps()];
 }
 fs.writeFileSync(path.join(outDir, "記録.json"), JSON.stringify({ log, errors }, null, 1));
 console.log(JSON.stringify({ log, errors }, null, 1));

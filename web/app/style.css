@@ -256,7 +256,7 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-top { display: flex; align-items: center; gap: 6px; height: 58px; padding: 0 10px; }
 .cam-top .icon-btn { flex: none; width: 44px; height: 44px; }
 /* 上の設定: 5 つを同じ幅に固定（値の字数が変わっても横にずれない）。値の下にローレットの線 */
-.cam-sets { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; height: 46px; padding: 0 8px; }
+.cam-sets { flex: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; height: 46px; padding: 0 8px; }
 .cam-set { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-width: 0; height: 44px; font-size: 9.5px; letter-spacing: 0; color: var(--sub); white-space: nowrap; touch-action: none; }
 .cam-set b, .cam-pro-cell b { position: relative; display: block; padding: 1px 0 0; text-align: center; font-weight: 500; font-size: 13px; color: var(--ink); white-space: nowrap; }
 .cam-set b.roll-up { animation: cam-roll-up .16s ease-out; }

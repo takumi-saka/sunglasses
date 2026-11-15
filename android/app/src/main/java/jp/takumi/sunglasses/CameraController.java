@@ -931,9 +931,7 @@ final class CameraController {
             int isoMin = ir == null ? 50 : ir.getLower(), isoMax = ir == null ? 3200 : ir.getUpper();
             long t = et;
             int s = Math.max(isoMin, Math.min(isoMax, iso));
-            // 自動の明るさから 1 段下げる（近くの白い物を飛ばさない）
-            if (s >= isoMin * 2) s /= 2;
-            else t /= 2;
+            // 明るさは、ライトをつけた時の自動の値のまま撮る（1 段下げていたのは合成のためで、やめた。2026-11-15）
             while (t > FLASH_MAX_EXPOSURE && s * 2 <= isoMax) {
                 t /= 2;
                 s *= 2;

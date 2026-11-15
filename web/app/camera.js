@@ -25,6 +25,7 @@ const SETTINGS = {
   timer: [0, 3, 10],
   zebra: [true, false],
   autoJpeg: [false, true],
+  flash: [false, true], // フラッシュ（スマホのライト）。どのカメラ・ルックでも選べる
 };
 const log2 = (x) => Math.log(x) / Math.LN2;
 // 拡大（2026-11-13）。倍率の札と、つまんで拡大できる上の倍率。RAW を切り抜く拡大なので、2 倍で画素は 4 分の 1、4 倍で 16 分の 1 になる
@@ -85,7 +86,7 @@ export class Camera {
     this.meterAt = null; // たたいた所（撮る画面の枠の中の 0〜1）。明るさをそこで重く測る
     this.openKey = null; // 手で決める撮り方のうち、輪を出している項目
     this.pro = { s: null, iso: null, focus: null, wb: pref("cameraWb") || "auto", af: pref("cameraAf") || "continuous" };
-    this.settings = { frame: "1.85", timer: 0, zebra: true, autoJpeg: false, ...(pref("camera") || {}), sound: false }; // シャッター音はいつも鳴らさない（本人 11/13。項目もなくした）
+    this.settings = { frame: "1.85", timer: 0, zebra: true, autoJpeg: false, flash: false, ...(pref("camera") || {}), sound: false }; // シャッター音はいつも鳴らさない（本人 11/13。項目もなくした）
     // 核を3つにしたとき（2026-11-06）、前の Aftersun を選んでいた人は、1回だけ新しい Aftersun に移す
     if (!pref("cameraFamilyV2")) {
       if ((pref("cameraFamily") || "aftersun") === "aftersun") pref("cameraFamily", "aftersun2");
@@ -106,7 +107,6 @@ export class Camera {
     }
     // 2026-11-15 カメラの切り替え（サングラス／写ルンです）。写ルンですは、32mm 相当・3:2・ライトが毎回光る。撮る画面にはルックをかけない
     this.film = pref("cameraFilm") === 1;
-    this.filmFlash = pref("cameraFilmFlash") !== 0; // 写ルンですのフラッシュ（スマホのライト）。たく・たかないを選ぶ
     this.cinema = pref("cameraCinema") !== 0;
     this.sun = SUN_CORES.includes(pref("cameraSun")) ? pref("cameraSun") : null;
     this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
@@ -199,9 +199,7 @@ export class Camera {
     const cams = [h("small", {}, "カメラ"),
       h("button", { class: "cam-look" + (!this.film ? " is-on" : ""), onClick: () => this.setFilm(false) }, "サングラス"),
       h("button", { class: "cam-look" + (this.film ? " is-on" : ""), onClick: () => this.setFilm(true) }, "写ルンです")];
-    const list = h("div", { class: "cam-looks-list" }, ...cams, ...(this.film ? [h("small", {}, "フラッシュ"),
-      h("button", { class: "cam-look" + (this.filmFlash ? " is-on" : ""), onClick: () => this.setFilmFlash(true) }, "たく"),
-      h("button", { class: "cam-look" + (!this.filmFlash ? " is-on" : ""), onClick: () => this.setFilmFlash(false) }, "たかない")] : [h("small", {}, "ルック"),
+    const list = h("div", { class: "cam-looks-list" }, ...cams, ...(this.film ? [] : [h("small", {}, "ルック"),
       h("button", { class: "cam-look" + (this.cinema ? " is-on" : ""), onClick: () => this.setLook(!this.cinema, this.sun, true) }, "Cinema　" + (this.cinema ? "オン" : "オフ")),
       h("small", {}, "Aftersun を足す"),
       ...[null, ...SUN_CORES].map((id) => h("button", { class: "cam-look" + (id === this.sun ? " is-on" : ""), onClick: () => this.setLook(this.cinema, id) }, id ? this.familyName(id) : "なし"))]));
@@ -248,6 +246,11 @@ export class Camera {
     pref("camera", this.settings);
     bridge.haptic("tick");
     if (key === "zebra") bridge.cameraCall("cameraSetZebra", value);
+    if (key === "flash" && value) {
+      // たけない時は、選んだその場で理由を出す
+      if (bridge.bridgeVersion() < bridge.FLASH_BRIDGE) this.bubble("フラッシュ", "アプリの更新が要ります", 2200);
+      else if ((this.opened || {}).flash === false) this.bubble("フラッシュ", "このカメラにはライトがありません", 2200);
+    }
     this.renderSettings(key, dir);
   }
 
@@ -255,7 +258,7 @@ export class Camera {
     const s = this.settings, $ = (id) => document.getElementById(id);
     const text = {
       frame: this.film ? "3:2" : FRAMES.find((f) => f[0] === s.frame)[1], timer: s.timer ? s.timer + "秒" : "オフ", zebra: onOff(s.zebra),
-      sound: onOff(s.sound), autoJpeg: onOff(s.autoJpeg),
+      sound: onOff(s.sound), autoJpeg: onOff(s.autoJpeg), flash: s.flash ? "たく" : "オフ",
     };
     for (const key of Object.keys(SETTINGS)) {
       const b = $("cam-set-" + (key === "autoJpeg" ? "jpeg" : key)).querySelector("b");
@@ -272,7 +275,7 @@ export class Camera {
     // 写ルンですは合わせる所が無いので、つまみの列を隠して、カメラの決まりの値だけを出す
     this.els.pro.parentElement.classList.toggle("is-film", this.film);
     document.getElementById("cam-fixed").hidden = !this.film;
-    document.getElementById("cam-fixed-note").textContent = this.filmFlash ? "フラッシュをたきます。押すだけです" : "フラッシュはたきません。押すだけです";
+    document.getElementById("cam-fixed-note").textContent = s.flash ? "フラッシュをたきます。押すだけです" : "フラッシュはたきません。押すだけです";
     const name = this.lookName();
     this.els.coreBtn.classList.toggle("is-long", name.length > 12); // 長い名前は字を小さくして、シャッターに寄らないようにする
     this.els.coreBtn.replaceChildren(h("small", {}, "ルック"), h("b", {}, name), h("span", { class: "cam-core-hint" }, "長押しで元の画"));
@@ -451,15 +454,6 @@ export class Camera {
     this.buildControls();
     await this.sendLook();
     this.applyFilmView();
-  }
-
-  setFilmFlash(on) {
-    this.toggleLooks(false);
-    this.filmFlash = on;
-    pref("cameraFilmFlash", on ? 1 : 0);
-    bridge.haptic("tick");
-    this.bubble("フラッシュ", on ? "たく" : "たかない", 1100);
-    this.renderSettings();
   }
 
   applyFilmView() {
@@ -1148,12 +1142,12 @@ export class Camera {
     const applied = this.expo.auto ? this.gains[main] : this.expo.frozen[main] * Math.pow(2, this.expo.remainder);
     const land = this.deg === 90 || this.deg === 270;
     // 写ルンですでフラッシュをたく時は、ライトを光らせて 1 枚撮る（窓口 版 6 から。ライトの無いカメラはふつうに撮る）
-    const flash = this.film && this.filmFlash && bridge.bridgeVersion() >= bridge.FLASH_BRIDGE && (this.opened || {}).flash !== false;
+    const flash = !!this.settings.flash && bridge.bridgeVersion() >= bridge.FLASH_BRIDGE && (this.opened || {}).flash !== false;
     this.pendingLook = this.film ? {
       // 写ルンです: 明るさは合わせない（光の量から計算する）。写る範囲は 32mm 相当・3:2
       ...this.lookP(), exposure: 0, flash, crop: UT.frameCrop(land ? 4 : 3, land ? 3 : 4, 1 / this.filmZoom()),
     } : {
-      ...this.lookP(),
+      ...this.lookP(), flash,
       exposure: this.expo.auto || !this.autoNow ? 0 : Math.round(C.clamp(log2(applied / this.autoNow[main]), -3, 3) * 100) / 100,
       // 拡大して撮った写真は、開いた時にその倍率で真ん中を切り抜く（RAW には全体が残る。切り抜きの画面で戻せる）
       ...(this.zoom > 1 ? { crop: { cx: 0.5, cy: 0.5, w: 1 / this.zoom, h: 1 / this.zoom, angle: 0 } } : {}),

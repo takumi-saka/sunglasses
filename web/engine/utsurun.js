@@ -57,20 +57,19 @@ export function toDaylightSrgb(light, ap0ToSrgb) {
 
 // 元の画の値（センサーがあふれる量 = 1）→ フィルムに当たる光の量（lux 秒）の倍率。
 // 写ルンですは明るさを合わせないので、場面の本当の明るさで決まる。
-// 撮った時の感度・シャッター・絞りが分からない写真（JPEG など）は、画面の平均が灰色に写る量と置く
-// フラッシュをたいて撮った写真（スマホのライトを光らせて撮った 1 枚）の扱い。
-// Q: 写ルンですのフラッシュ 1 回の光の量（1m 先での lux 秒。2m 先の灰色がちょうどよく写る強さと置いた仮の値）。
-// led: スマホのライトの明るさ（1m 先での lux。端末で測るまでの仮の値）。
-// スマホのライトは写ルンですのフラッシュよりずっと弱いので、写った光の量を「フラッシュ 1 回ぶん」の強さに直す倍率をかける
-export const FLASH = { Q: 270, led: 100 };
-export const flashGain = () => FLASH.Q / (FLASH.led * CAM.t);
+// 撮った時の感度・シャッター・絞りが分からない写真（JPEG など）は、画面の平均が灰色に写る量と置く。
+// 暗い場面の下限（FLOOR）: 本物は暗い室内でフラッシュ無しだとほぼ写らない（緑がかった黒いコマになる）。
+// アプリでは写真にならないので、画面の平均が「ちょうどよく写る量の FLOOR 倍」より少ない時は、そこまで光を足したことにする
+// （スマホが明るさを合わせて撮った画を、そのままフィルムに当てる。ライトをつけて撮った写真も同じ扱い）。
+// 明るい外は、本当の光の量のほうが多いので変わらない
+export const FLOOR = 0.5;
 
 export function exposureScale(image, Q = P) {
-  const m = image.meta || {};
+  const m = image.meta || {}, even = GRAY / Math.max(image.key || 0.18, 1e-6);
   if (image.kind === "raw" && m.iso > 0 && m.shutter > 0 && m.aperture > 0) {
-    return (78 / m.iso) * (CAM.t / m.shutter) * Math.pow(m.aperture / CAM.N, 2) * Math.pow(10, Q.cal);
+    return Math.max((78 / m.iso) * (CAM.t / m.shutter) * Math.pow(m.aperture / CAM.N, 2) * Math.pow(10, Q.cal), even * FLOOR);
   }
-  return GRAY / Math.max(image.key || 0.18, 1e-6);
+  return even;
 }
 
 // 写ルンですの画角（32mm 相当・3:2）の切り抜き。ratio = 撮ったレンズの焦点距離 ÷ 32（メインの 23mm なら 23/32。1 なら縦横の比だけ）
