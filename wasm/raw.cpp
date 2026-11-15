@@ -110,6 +110,71 @@ int applyGainMaps() {
   return int(applied);
 }
 int gainMapsApplied = 0;
+
+// ---- 黒のすぐ上の暗い所の赤紫かぶりを防ぐ（2026-11-15）----
+// 原因: 光がほぼ届いていない所の値は「黒の基準 ± ノイズ」。LibRaw は黒の基準より下を 0 に切り捨てるので、
+//   平均が本当の値より上にずれる（ノイズの大きさの約 0.4 倍）。そのずれに白の色合わせの倍率（赤 2.3・青 1.7・緑 1）が
+//   かかり、暗い所が赤紫になる（夜道の地面で、切り捨てる前は 2.4/2.4/2.2、切り捨てると 3.6/2.7/2.9）。
+// 対処: 切り捨てる前の RAW の値で、まわりの同じ色の画素 5×5 個の平均（黒より下もそのまま数える）を求め、
+//   平均が黒の基準＋ノイズ 1 個分より暗い所は平均に置き換え、4 個分より明るい所はそのまま、間はなめらかにつなぐ。
+//   ノイズの大きさは、黒より下に出た値の広がりから求める。黒より下の画素が 2% 未満の写真（昼の写真）は何もしない。
+int shadowsQuieted = 0;
+int quietShadows() {
+  ushort* raw = R->imgdata.rawdata.raw_image;
+  const auto& S = R->imgdata.sizes;
+  const auto& C = R->imgdata.color;
+  if (!raw || R->imgdata.idata.filters < 1000) return 0;  // 2×2 の並びの RAW だけ
+  float black = C.black + (C.cblack[0] + C.cblack[1] + C.cblack[2] + C.cblack[3]) / 4.0f;
+  if (C.cblack[4] && C.cblack[5]) {
+    float s = 0;
+    for (unsigned i = 0; i < C.cblack[4] * C.cblack[5]; i++) s += C.cblack[6 + i];
+    black += s / (C.cblack[4] * C.cblack[5]);
+  }
+  const int RH = S.raw_height, RW = S.raw_pitch / 2;
+  if (RH < 16 || RW < 16 || black <= 0) return 0;
+  const size_t total = size_t(RH) * RW;
+  double s2 = 0;
+  size_t nb = 0;
+  for (size_t i = 0; i < total; i++) {
+    float d = black - raw[i];
+    if (d > 0) s2 += double(d) * d, nb++;
+  }
+  if (nb < total / 50) return 0;
+  const float sigma = float(std::sqrt(s2 / nb));
+  if (sigma < 0.5f) return 0;
+  // 同じ色（2 つおき）の画素で、横 5 個の合計 → 縦 5 個の合計
+  auto same = [](int i, int k, int n) {
+    int j = i + 2 * k;
+    if (j < 0) return i & 1;
+    if (j >= n) return ((n - 1 - (i & 1)) / 2) * 2 + (i & 1);
+    return j;
+  };
+  std::vector<float> hsum(total);
+  for (int y = 0; y < RH; y++) {
+    const ushort* row = raw + size_t(y) * RW;
+    float* o = hsum.data() + size_t(y) * RW;
+    for (int x = 0; x < RW; x++) {
+      float s = 0;
+      for (int k = -2; k <= 2; k++) s += row[same(x, k, RW)];
+      o[x] = s;
+    }
+  }
+  const float lo = black + sigma, span = 3.0f * sigma;
+  for (int y = 0; y < RH; y++) {
+    const float* r[5];
+    for (int k = -2; k <= 2; k++) r[k + 2] = hsum.data() + size_t(same(y, k, RH)) * RW;
+    ushort* row = raw + size_t(y) * RW;
+    for (int x = 0; x < RW; x++) {
+      float m = (r[0][x] + r[1][x] + r[2][x] + r[3][x] + r[4][x]) / 25.0f;
+      float t = (m - lo) / span;
+      if (t >= 1.0f) continue;
+      t = t <= 0 ? 0 : t * t * (3 - 2 * t);
+      float v = m + (row[x] - m) * t;
+      row[x] = ushort(std::min(std::max(v, 0.0f), 65535.0f) + 0.5f);
+    }
+  }
+  return 1;
+}
 }  // namespace
 
 extern "C" {
@@ -151,6 +216,7 @@ EMSCRIPTEN_KEEPALIVE int sg_thumb_size() { return thumb ? (int)thumb->data_size 
 EMSCRIPTEN_KEEPALIVE int sg_develop(int half) {
   int r = R->unpack();
   if (r != LIBRAW_SUCCESS) return r;
+  shadowsQuieted = (R->imgdata.idata.filters && R->imgdata.rawdata.raw_image) ? quietShadows() : 0;
   gainMapsApplied = (R->imgdata.idata.filters && R->imgdata.rawdata.raw_image) ? applyGainMaps() : 0;
   auto& P = R->imgdata.params;
   if (half || R->imgdata.sizes.raw_width > 6000) P.half_size = 1;
