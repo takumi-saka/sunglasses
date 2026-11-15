@@ -106,6 +106,7 @@ export class Camera {
     }
     // 2026-11-15 カメラの切り替え（サングラス／写ルンです）。写ルンですは、32mm 相当・3:2・ライトが毎回光る。撮る画面にはルックをかけない
     this.film = pref("cameraFilm") === 1;
+    this.filmFlash = pref("cameraFilmFlash") !== 0; // 写ルンですのフラッシュ（スマホのライト）。たく・たかないを選ぶ
     this.cinema = pref("cameraCinema") !== 0;
     this.sun = SUN_CORES.includes(pref("cameraSun")) ? pref("cameraSun") : null;
     this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
@@ -198,7 +199,9 @@ export class Camera {
     const cams = [h("small", {}, "カメラ"),
       h("button", { class: "cam-look" + (!this.film ? " is-on" : ""), onClick: () => this.setFilm(false) }, "サングラス"),
       h("button", { class: "cam-look" + (this.film ? " is-on" : ""), onClick: () => this.setFilm(true) }, "写ルンです")];
-    const list = h("div", { class: "cam-looks-list" }, ...cams, ...(this.film ? [h("small", {}, "32mm・ライトが毎回光ります")] : [h("small", {}, "ルック"),
+    const list = h("div", { class: "cam-looks-list" }, ...cams, ...(this.film ? [h("small", {}, "フラッシュ"),
+      h("button", { class: "cam-look" + (this.filmFlash ? " is-on" : ""), onClick: () => this.setFilmFlash(true) }, "たく"),
+      h("button", { class: "cam-look" + (!this.filmFlash ? " is-on" : ""), onClick: () => this.setFilmFlash(false) }, "たかない")] : [h("small", {}, "ルック"),
       h("button", { class: "cam-look" + (this.cinema ? " is-on" : ""), onClick: () => this.setLook(!this.cinema, this.sun, true) }, "Cinema　" + (this.cinema ? "オン" : "オフ")),
       h("small", {}, "Aftersun を足す"),
       ...[null, ...SUN_CORES].map((id) => h("button", { class: "cam-look" + (id === this.sun ? " is-on" : ""), onClick: () => this.setLook(this.cinema, id) }, id ? this.familyName(id) : "なし"))]));
@@ -269,6 +272,7 @@ export class Camera {
     // 写ルンですは合わせる所が無いので、つまみの列を隠して、カメラの決まりの値だけを出す
     this.els.pro.parentElement.classList.toggle("is-film", this.film);
     document.getElementById("cam-fixed").hidden = !this.film;
+    document.getElementById("cam-fixed-note").textContent = this.filmFlash ? "フラッシュをたきます。押すだけです" : "フラッシュはたきません。押すだけです";
     const name = this.lookName();
     this.els.coreBtn.classList.toggle("is-long", name.length > 12); // 長い名前は字を小さくして、シャッターに寄らないようにする
     this.els.coreBtn.replaceChildren(h("small", {}, "ルック"), h("b", {}, name), h("span", { class: "cam-core-hint" }, "長押しで元の画"));
@@ -447,6 +451,15 @@ export class Camera {
     this.buildControls();
     await this.sendLook();
     this.applyFilmView();
+  }
+
+  setFilmFlash(on) {
+    this.toggleLooks(false);
+    this.filmFlash = on;
+    pref("cameraFilmFlash", on ? 1 : 0);
+    bridge.haptic("tick");
+    this.bubble("フラッシュ", on ? "たく" : "たかない", 1100);
+    this.renderSettings();
   }
 
   applyFilmView() {
@@ -1134,9 +1147,11 @@ export class Camera {
     const lk = this.look(), main = lk.B && lk.wB > 0 ? "B" : "A";
     const applied = this.expo.auto ? this.gains[main] : this.expo.frozen[main] * Math.pow(2, this.expo.remainder);
     const land = this.deg === 90 || this.deg === 270;
+    // 写ルンですでフラッシュをたく時は、ライトを光らせて 1 枚撮る（窓口 版 6 から。ライトの無いカメラはふつうに撮る）
+    const flash = this.film && this.filmFlash && bridge.bridgeVersion() >= bridge.FLASH_BRIDGE && (this.opened || {}).flash !== false;
     this.pendingLook = this.film ? {
       // 写ルンです: 明るさは合わせない（光の量から計算する）。写る範囲は 32mm 相当・3:2
-      ...this.lookP(), exposure: 0, crop: UT.frameCrop(land ? 4 : 3, land ? 3 : 4, 1 / this.filmZoom()),
+      ...this.lookP(), exposure: 0, flash, crop: UT.frameCrop(land ? 4 : 3, land ? 3 : 4, 1 / this.filmZoom()),
     } : {
       ...this.lookP(),
       exposure: this.expo.auto || !this.autoNow ? 0 : Math.round(C.clamp(log2(applied / this.autoNow[main]), -3, 3) * 100) / 100,
@@ -1146,8 +1161,6 @@ export class Camera {
     bridge.haptic("confirm");
     this.view.classList.add("is-flash");
     setTimeout(() => this.view.classList.remove("is-flash"), 140);
-    // 写ルンですは、ライトをつけて撮る（暗い場面では、続けてライトなしの 1 枚も撮る。窓口 版 6 から）
-    const flash = this.film && bridge.bridgeVersion() >= bridge.FLASH_BRIDGE;
     bridge.cameraCall(flash ? "cameraCaptureFlash" : "cameraCapture", this.settings.sound);
     this.capturedTimer = setTimeout(() => (this.busy = false), flash ? 9000 : 4000);
   }

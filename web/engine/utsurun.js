@@ -58,6 +58,13 @@ export function toDaylightSrgb(light, ap0ToSrgb) {
 // 元の画の値（センサーがあふれる量 = 1）→ フィルムに当たる光の量（lux 秒）の倍率。
 // 写ルンですは明るさを合わせないので、場面の本当の明るさで決まる。
 // 撮った時の感度・シャッター・絞りが分からない写真（JPEG など）は、画面の平均が灰色に写る量と置く
+// フラッシュをたいて撮った写真（スマホのライトを光らせて撮った 1 枚）の扱い。
+// Q: 写ルンですのフラッシュ 1 回の光の量（1m 先での lux 秒。2m 先の灰色がちょうどよく写る強さと置いた仮の値）。
+// led: スマホのライトの明るさ（1m 先での lux。端末で測るまでの仮の値）。
+// スマホのライトは写ルンですのフラッシュよりずっと弱いので、写った光の量を「フラッシュ 1 回ぶん」の強さに直す倍率をかける
+export const FLASH = { Q: 270, led: 100 };
+export const flashGain = () => FLASH.Q / (FLASH.led * CAM.t);
+
 export function exposureScale(image, Q = P) {
   const m = image.meta || {};
   if (image.kind === "raw" && m.iso > 0 && m.shutter > 0 && m.aperture > 0) {

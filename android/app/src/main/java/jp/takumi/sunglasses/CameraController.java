@@ -818,7 +818,7 @@ final class CameraController {
             sound = withSound;
             flashBusy = true;
             final double ev = sceneEv(lastPreview);
-            final boolean pair = !(ev >= PAIR_EV); // 明るさが読めない時は 2 枚撮る
+            final boolean pair = false; // ライトありの 1 枚だけを撮る（ライトなしとの 2 枚撮りと合成はやめた。2026-11-15 本人）
             final long t0 = System.currentTimeMillis();
             final int[] frames = {0};
             final boolean[] fired = {false};

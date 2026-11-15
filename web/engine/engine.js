@@ -103,6 +103,7 @@ export function defaultParams() {
     grain: 0, grainSize: 0, halation: 0, bloom: 0, soften: 0,
     sharpen: 0, noise: 0, colorNoise: 0,
     bw: false,
+    flash: false, // 写ルンです: フラッシュ（スマホのライト）をたいて撮った写真
     crop: { cx: 0.5, cy: 0.5, w: 1, h: 1, angle: 0 },
   };
 }
@@ -599,9 +600,9 @@ export class Engine {
   // ---------- 写ルンです（2026-11-15。式は utsurun.js）----------
   // コマごとに 1 回だけ決める量（光の量の倍率・白の直し・写真屋の機械の合わせ）。切り抜きと露出のつまみが同じなら作り直さない
   _utsFrame(aspect) {
-    const P = this.params, im = this.image, key = JSON.stringify([P.crop, P.exposure, aspect.toFixed(4)]);
+    const P = this.params, im = this.image, key = JSON.stringify([P.crop, P.exposure, !!P.flash, aspect.toFixed(4)]);
     if (this.utsCache && this.utsCache.key === key) return this.utsCache;
-    const toRgb = UT.toDaylightSrgb(im.meta && im.meta.light, this.ap0ToSrgb), k = UT.exposureScale(im);
+    const toRgb = UT.toDaylightSrgb(im.meta && im.meta.light, this.ap0ToSrgb), k = UT.exposureScale(im) * (P.flash ? UT.flashGain() : 1);
     const st = UT.frameStats(im.small, 160, Math.round(im.small.length / 480), this._cropToSrc(), toRgb, k, aspect, P.exposure);
     this.utsCache = { key, toRgb, k, ...st };
     return this.utsCache;
@@ -808,7 +809,7 @@ export class Engine {
     const { small, key } = t;
     if (uts) {
       // 写ルンです: 小さな画の全体を 1 コマと見て、同じ流れで描く（粒は入れない）
-      const toRgb = UT.toDaylightSrgb(t.meta && t.meta.light, this.ap0ToSrgb), k = UT.exposureScale({ kind: t.kind || "raw", meta: t.meta, key });
+      const toRgb = UT.toDaylightSrgb(t.meta && t.meta.light, this.ap0ToSrgb), k = UT.exposureScale({ kind: t.kind || "raw", meta: t.meta, key }) * (params && params.flash ? UT.flashGain() : 1);
       const st = UT.frameStats(small, 160, Math.round(small.length / 480), I3, toRgb, k, w / h, params ? params.exposure || 0 : 0);
       const r = this._utsDraw(up, I3, { toRgb, k, ...st }, w, h, 0, 0, w, h, { grain: false });
       const out = this._rt(w, h, true);

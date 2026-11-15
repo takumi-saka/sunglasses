@@ -377,7 +377,7 @@ await shot("c10_開けないレンズ");
   log.写ルンです.撮る = { 呼んだ物: (await page.evaluate(() => window.__calls.map((c) => c[0]))).filter((n) => n.startsWith("capture")), 保存した値: await page.evaluate(async () => {
     const { getEdit } = await import("/app/store.js");
     const e = await getEdit("external_primary:78:1");
-    return e && e.params && { core: e.params.core, exposure: e.params.exposure, crop: e.params.crop };
+    return e && e.params && { core: e.params.core, exposure: e.params.exposure, flash: e.params.flash, crop: e.params.crop };
   }) };
   await pickCam("サングラス");
   log.写ルンです.戻したあと = { 名前: await page.locator("#cam-core b").textContent(), 札: await chips(), 枠: await page.evaluate(() => document.getElementById("cam-frame").dataset.frame), 倍率: (await calls("zoom")).slice(-1)[0],
