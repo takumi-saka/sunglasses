@@ -5,6 +5,7 @@
 // 画面で見た画と書き出した画が同じに見える。
 import * as C from "./color.js";
 import * as S from "./shaders.js";
+import * as UT from "./utsurun.js";
 
 const HSL_KEYS = ["red", "orange", "yellow", "green", "aqua", "blue", "purple", "magenta"];
 const GRADE_ZONES = [["shadows", 25], ["midtones", 20], ["highlights", 25], ["global", 15]];
@@ -150,6 +151,7 @@ export class Engine {
       raw2f: S.FS_RAW2F, jpeg2f: S.FS_JPEG2F, develop: S.FS_DEVELOP, blur: S.FS_BLUR, copy: S.FS_COPY, nr: S.FS_NR,
       texture: S.FS_TEXTURE, clarity: S.FS_CLARITY, sharpen: S.FS_SHARPEN, noise: S.FS_NOISE, finish: S.FS_FINISH,
       halSrc: S.FS_HAL_SRC, halAdd: S.FS_HAL_ADD, bloomSrc: S.FS_BLOOM_SRC, final: S.FS_FINAL,
+      utsExpose: S.FS_UTS_EXPOSE, noise4: S.FS_NOISE4, utsFilm: S.FS_UTS_FILM, utsSharp: S.FS_UTS_SHARP,
     };
     this.progs = {};
     for (const [k, src] of Object.entries(fs)) this.progs[k] = this._program(S.VS, src, k);
@@ -379,6 +381,7 @@ export class Engine {
   _setImage(im) {
     this.image = im;
     this.evCache = {};
+    this.utsCache = null;
     this.noiseCache = null;
     this.seed = (Math.random() * 1e9) >>> 0;
     this.view = { zoom: 1, cx: 0.5, cy: 0.5 };
@@ -492,6 +495,8 @@ export class Engine {
   // 途中の画は使い終わったらすぐ返して使い回す（元の大きさで書き出すとき、同時に持つのを 3〜4 枚に抑える）
   _renderRegion(VW, VH, x0, y0, bw, bh, { compare = false } = {}) {
     const P = this.params, im = this.image;
+    // 2026-11-15 写ルンですは、ルックの対応表を通さない別の流れで描く
+    if (!compare && P.core === UT.UTSURUN_CORE) return this._renderUtsurun(VW, VH, x0, y0, bw, bh);
     const lk = compare ? { A: this.coreById("aftersun"), wA: 0, B: null, wB: 0, wN: 1 } : this.lookFor(P);
     const core = this._mixedCore(lk);
     const rt = () => this._rt(bw, bh);
@@ -586,6 +591,64 @@ export class Engine {
     }
     out.used = [out.rgb, out.glow].filter(Boolean);
     return out;
+  }
+
+  // ---------- 写ルンです（2026-11-15。式は utsurun.js）----------
+  // コマごとに 1 回だけ決める量（光の量の倍率・白の直し・写真屋の機械の合わせ）。切り抜きと露出のつまみが同じなら作り直さない
+  _utsFrame(aspect) {
+    const P = this.params, im = this.image, key = JSON.stringify([P.crop, P.exposure, aspect.toFixed(4)]);
+    if (this.utsCache && this.utsCache.key === key) return this.utsCache;
+    const toRgb = UT.toDaylightSrgb(im.meta && im.meta.light, this.ap0ToSrgb), k = UT.exposureScale(im);
+    const st = UT.frameStats(im.small, 160, Math.round(im.small.length / 480), this._cropToSrc(), toRgb, k, aspect, P.exposure);
+    this.utsCache = { key, toRgb, k, ...st };
+    return this.utsCache;
+  }
+
+  // 流れ: フィルムに当たる光の量 → レンズのにじみ（まん中と角の 2 枚）→ 四隅・かぶり・ネガ・粒・写真屋の機械（1 回）→ 輪郭強調。
+  // 明るさと色のつまみは通さない（露出だけ、プリントの焼きの明るさとして効く）。白黒は仕上げ（_final）でかかる
+  _renderUtsurun(VW, VH, x0, y0, bw, bh) {
+    const toCrop = [bw / VW, 0, x0 / VW, 0, bh / VH, y0 / VH, 0, 0, 1];
+    return this._utsDraw(this.src.tex, mul33(this._cropToSrc(), toCrop), this._utsFrame(VW / VH), VW, VH, x0, y0, bw, bh);
+  }
+
+  // src: 元の画（AP0）。xf: 描く範囲の中の位置 → 元の画の位置。f: コマごとに決める量（_utsFrame の形）
+  _utsDraw(src, xf, f, VW, VH, x0, y0, bw, bh, { grain = true } = {}) {
+    const Q = UT.P, F = UT.FILM;
+    const rt = () => this._rt(bw, bh);
+    const toCrop = [bw / VW, 0, x0 / VW, 0, bh / VH, y0 / VH, 0, 0, 1];
+    const H = rt();
+    this._pass("utsExpose", H, { uSrc: src, uXf: xf, uToRgb: f.toRgb, uK: f.k / UT.GRAY });
+    const scale = Math.max(VW, VH) / 1500;
+    const A = this._blur(H, Math.max(Q.blur[0] * scale, 0.3)), B = this._blur(H, Math.max(Q.blur[1] * scale, 0.3));
+    this._give(H);
+    // 粒: フィルムの上での 1 画素の大きさ（µm）から強さを決める（細かく描くほど、1 画素あたりの粒は強く、細かくなる）
+    const px = 36000 / Math.max(VW, VH), sigma = F.rms * Math.sqrt(1810 / (px * px)) * Q.grain;
+    let noise = null, norm = 1;
+    if (grain && sigma > 0) {
+      const raw = rt(), wts = C.gaussWeights(0.55);
+      this._pass("noise4", raw, { uOrigin: [x0, y0], uSize: [bw, bh], uSeed: this.seed });
+      norm = wts.reduce((s, v, i) => s + (i ? 2 : 1) * v * v, 0);
+      noise = this._blur(raw, 0.55);
+      this._give(raw);
+    }
+    const film = rt(), den = (VW * VW + VH * VH) / 4;
+    this._pass("utsFilm", film, {
+      uBlurA: A, uBlurB: B, uNoise: noise || A, uToCrop: toCrop, uR2: [(VW * VW) / den, (VH * VH) / den],
+      uVig: Q.vig, uFlare: f.flare, uMix: UT.mixMatrix(Q), uGamma: F.gamma, uToeD: [Q.toe_d[0], 0, Q.toe_d[1]],
+      uFilm: [F.x0, F.toe, F.dmax, F.xgray], uGrainOn: noise ? 1 : 0,
+      uGrain: [sigma, Math.sqrt(1 - Q.grain_rho) / norm, Math.sqrt(Q.grain_rho) / norm], uGrainShape: UT.GRAIN_SHAPE,
+      uGain: f.gain, uOffset: f.offset, uRange: [Q.range + Q.rng_rb[0], Q.range, Q.range + Q.rng_rb[1]],
+      uPaper: [Q.s, Q.e0, Q.nu], uSat: Q.sat,
+    });
+    this._release([A, B, noise]);
+    let rgb = film;
+    if (Q.sharp > 0) {
+      const bl = this._blur(film, scale);
+      rgb = rt();
+      this._pass("utsSharp", rgb, { uRgb: film, uBlur: bl, uAmt: Q.sharp });
+      this._release([film, bl]);
+    }
+    return { rgb, glow: null, bloom: 0, warm: 0, used: [rgb] };
   }
 
   _knobUniforms(P = this.params) {
@@ -729,7 +792,8 @@ export class Engine {
   // params（編集したつまみの値の全部）を渡すと、色と明るさのつまみ・白黒もかける（2026-11-13。一覧の画が編集前のままだった）。
   // 切り抜き・粒・にじみなどは、小さな画ではかけない
   renderThumb(t, look, canvas, params = null) {
-    const lk = this.lookFor(typeof look === "string" ? { core: look === "weak" ? "aftersun" : look, sunLevel: look === "weak" ? 50 : 100 } : look);
+    const uts = (typeof look === "string" ? look : look.core) === UT.UTSURUN_CORE;
+    const lk = uts ? null : this.lookFor(typeof look === "string" ? { core: look === "weak" ? "aftersun" : look, sunLevel: look === "weak" ? 50 : 100 } : look);
     const gl = this.gl, w = t.tw, h = t.th, used = [];
     const up = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, up);
@@ -739,6 +803,22 @@ export class Engine {
       [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
     const src = { tex: up };
     const { small, key } = t;
+    if (uts) {
+      // 写ルンです: 小さな画の全体を 1 コマと見て、同じ流れで描く（粒は入れない）
+      const toRgb = UT.toDaylightSrgb(t.meta && t.meta.light, this.ap0ToSrgb), k = UT.exposureScale({ kind: t.kind || "raw", meta: t.meta, key });
+      const st = UT.frameStats(small, 160, Math.round(small.length / 480), I3, toRgb, k, w / h, params ? params.exposure || 0 : 0);
+      const r = this._utsDraw(up, I3, { toRgb, k, ...st }, w, h, 0, 0, w, h, { grain: false });
+      const out = this._rt(w, h, true);
+      this._pass("final", out, { uRgb: r.rgb, uGlow: r.rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0 });
+      const px = new Uint8ClampedArray(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      this._release([r.rgb, out]);
+      gl.deleteTexture(up);
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").putImageData(new ImageData(px, w, h), 0, 0);
+      return;
+    }
     const ex = params ? Math.pow(2, params.exposure || 0) : 1;
     const gain = (c) => ex * (0.18 / key) * Math.pow(2, C.coreEv(this._smallFor(c, small, t.meta), key, c, this, null, C.sceneOf(t.meta, key)));
     const gainN = lk.wN > 0 ? ex * (0.18 / key) * Math.pow(2, C.searchEv((e) => C.medianNeutral(small, key, e, this.ap0ToSrgb, this.neutralCurve), this.targetL)) : 1;

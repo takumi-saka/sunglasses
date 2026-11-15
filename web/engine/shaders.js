@@ -410,3 +410,98 @@ void main() {
   }
   o = vec4(c, 1.0);
 }`);
+
+// ---------- 写ルンです（2026-11-15。式は utsurun.js の冒頭と _work/写ルンです/scripts/utsurun.py）----------
+// 元の画（AP0、端末が決めた白）→ フィルムに当たる光の量（昼の光の白の sRGB の原色。18% の灰色がちょうどよく写る量 = 1）
+export const FS_UTS_EXPOSE = fs(`
+uniform sampler2D uSrc;
+uniform mat3 uXf;
+uniform mat3 uToRgb;
+uniform float uK;
+void main() {
+  vec3 ap0 = texture(uSrc, (uXf * vec3(vUv, 1.0)).xy).rgb;
+  o = vec4(max(uToRgb * ap0, 0.0) * uK, 1.0);
+}`);
+
+// 粒のもと 4 つ（rgb = フィルムの層ごと、a = 3 つの層で共通）。位置ごとに決まる、正規分布の白いノイズ
+export const FS_NOISE4 = fs(`
+uniform vec2 uOrigin;
+uniform vec2 uSize;
+uniform uint uSeed;
+uint hash(uint x) {
+  x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16;
+  return x;
+}
+float gauss(uint h) {
+  float u1 = (float(h & 0xffffu) + 0.5) / 65536.0;
+  float u2 = (float(hash(h) & 0xffffu) + 0.5) / 65536.0;
+  return sqrt(-2.0 * log(u1)) * cos(2.0 * PI * u2);
+}
+void main() {
+  ivec2 p = ivec2(floor(uOrigin + vUv * uSize));
+  uint h = hash(uint(p.x) * 1973u + hash(uint(p.y) * 9277u + uSeed * 26699u));
+  o = vec4(gauss(hash(h + 0x9e3779b9u)), gauss(hash(h + 0x3c6ef372u)), gauss(hash(h + 0xdaa66d2bu)), gauss(hash(h + 0x78dde6e4u)));
+}`);
+
+// レンズ（にじみ・四隅・かぶり）→ ネガの濃さ → 粒 → 写真屋の機械（明るさと色の合わせ → 印画紙の線）→ sRGB
+export const FS_UTS_FILM = fs(`
+uniform sampler2D uBlurA; // 光の量を、まん中のにじみの分だけぼかした物
+uniform sampler2D uBlurB; // 角のにじみの分だけぼかした物
+uniform sampler2D uNoise;
+uniform mat3 uToCrop;
+uniform vec2 uR2;         // 画面のまん中からの離れ方（角で 1）を出す係数
+uniform float uVig;
+uniform vec3 uFlare;
+uniform mat3 uMix;
+uniform vec3 uGamma;
+uniform vec3 uToeD;
+uniform vec4 uFilm;       // x0, toe, dmax, xgray
+uniform int uGrainOn;
+uniform vec3 uGrain;      // 粒の強さ（濃さの単位）, 層ごとの分の重み, 共通の分の重み
+uniform float uGrainShape[49]; // ネガの濃さごとの粒の強さ（濃さ 0〜2.4 を 0.05 刻み）
+uniform float uGain;
+uniform vec3 uOffset;
+uniform vec3 uRange;
+uniform vec3 uPaper;      // s, e0, nu
+uniform float uSat;
+const float LN10 = 2.302585092994046;
+void main() {
+  vec2 c = (uToCrop * vec3(vUv, 1.0)).xy - 0.5;
+  float r2 = dot(c * c, uR2);
+  vec3 H = mix(texture(uBlurA, vUv).rgb, texture(uBlurB, vUv).rgb, clamp(r2, 0.0, 1.0));
+  float v = 1.0 + uVig * r2;
+  H = H / (v * v) + uFlare;
+  // ネガの濃さ（素の濃さより上の分）
+  vec3 x = log(max(uMix * H, 3.98e-6)) / LN10 + uFilm.w;
+  vec3 t = (x - uFilm.x - uToeD) / uFilm.y;
+  vec3 d = uGamma * uFilm.y * (max(t, 0.0) + log(1.0 + exp(-abs(t) * LN10)) / LN10);
+  d = d / pow(1.0 + pow(d / uFilm.z, vec3(3.0)), vec3(1.0 / 3.0));
+  if (uGrainOn == 1) {
+    vec4 n = texture(uNoise, vUv);
+    // 薄い所（暗い所）ほど強く、濃い所（明るい所）は弱い。層ごとに、その濃さの値を表から引く
+    vec3 g = clamp(d, 0.0, 2.4) * 20.0;
+    ivec3 gi = min(ivec3(g), ivec3(47));
+    vec3 gf = g - vec3(gi);
+    vec3 shape = mix(vec3(uGrainShape[gi.r], uGrainShape[gi.g], uGrainShape[gi.b]), vec3(uGrainShape[gi.r + 1], uGrainShape[gi.g + 1], uGrainShape[gi.b + 1]), gf);
+    d += (n.rgb * uGrain.y + n.a * uGrain.z) * uGrain.x * shape;
+  }
+  // 写真屋の機械: 光の量の見積もり（灰色 = 0、log10）→ 薄いネガの引き伸ばし → 明るさと色の合わせ → 印画紙
+  float floorE = uFilm.x - uFilm.w;
+  vec3 e = d / uGamma + uFilm.x + uToeD - uFilm.w;
+  e = floorE + (e - floorE) * uGain + uOffset;
+  vec3 Dp = uRange * pow(1.0 + uPaper.z * exp(uPaper.x * (e - uPaper.y) * LN10), vec3(-1.0 / uPaper.z));
+  vec3 R = exp(-Dp * LN10);
+  float Y = dot(R, vec3(0.2126, 0.7152, 0.0722));
+  R = clamp(Y + (R - Y) * uSat, 0.0, 1.0);
+  o = vec4(l2s(R), 1.0);
+}`);
+
+// 写真屋の機械の輪郭強調（sRGB の値のまま）
+export const FS_UTS_SHARP = fs(`
+uniform sampler2D uRgb;
+uniform sampler2D uBlur;
+uniform float uAmt;
+void main() {
+  vec3 c = texture(uRgb, vUv).rgb;
+  o = vec4(clamp(c + uAmt * (c - texture(uBlur, vUv).rgb), 0.0, 1.0), 1.0);
+}`);

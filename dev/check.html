@@ -7,6 +7,7 @@
   import { Engine, defaultParams } from "/engine/engine.js";
   import { shotInfo } from "/engine/exif.js";
   import { sceneOf } from "/engine/color.js";
+  import * as UT from "/engine/utsurun.js";
   window.__run = async (dngUrl, width, modes) => {
     const e = window.__e || (window.__e = await Engine.create(document.getElementById("c")));
     const res = await fetch(dngUrl);
@@ -21,6 +22,8 @@
       if (m.kind === "lut") Object.assign(p, { soften: -100, halation: -100, bloom: -100, grain: -100 });
       if (m.kind === "nograin") p.grain = -100;
       Object.assign(p, m.params || {});
+      // 確かめ用: 写ルンですの画角の切り抜き（utsCrop = 撮ったレンズの焦点距離 ÷ 32。1 なら縦横の比だけ）
+      if (m.utsCrop) p.crop = UT.frameCrop(im.w, im.h, m.utsCrop);
       // 確かめ用: 光の色を残す決まり（keepLight）を、描き方ごとに差し替える（null で残さない）。露光の覚えも捨てる
       // 確かめ用: 露光の決まり（meter）の値を、描き方ごとに上書きする（night: null で夜の決まりを外す、など）
       if (m.meter) {
@@ -32,6 +35,13 @@
         e.evCache = {};
       }
       e.params = p;
+      // 確かめ用: 一覧の小さな画（kind が "thumb"）
+      if (m.kind === "thumb") {
+        const t = await e.decodeThumb(await (await fetch(dngUrl)).arrayBuffer(), 256), tc = document.createElement("canvas");
+        e.renderThumb(t, { core: m.core, sun: p.sun, sunLevel: p.sunLevel }, tc, m.params ? p : null);
+        out.results.push({ ...m, ev: 0, evNeutral: 0, ms: 0, png: tc.toDataURL("image/png") });
+        continue;
+      }
       const t1 = performance.now();
       const r = e.renderPixels(width, { compare: m.kind === "neutral" });
       const ms = performance.now() - t1;
@@ -39,7 +49,8 @@
       cv.width = r.width;
       cv.height = r.height;
       cv.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(r.pixels.buffer), r.width, r.height), 0, 0);
-      out.results.push({ ...m, ev: e.autoEv(m.core), evNeutral: e.autoEv("neutral"), ms, png: cv.toDataURL("image/png") });
+      const u = e.utsCache && m.core === UT.UTSURUN_CORE ? { k: e.utsCache.k, shift: e.utsCache.shift, gain: e.utsCache.gain, col: e.utsCache.col, key: e.utsCache.key, flare: e.utsCache.flare } : undefined;
+      out.results.push({ ...m, uts: u, ev: e.autoEv(m.core), evNeutral: e.autoEv("neutral"), ms, png: cv.toDataURL("image/png") });
     }
     return out;
   };
