@@ -1141,7 +1141,7 @@ export class Camera {
     const lk = this.look(), main = lk.B && lk.wB > 0 ? "B" : "A";
     const applied = this.expo.auto ? this.gains[main] : this.expo.frozen[main] * Math.pow(2, this.expo.remainder);
     const land = this.deg === 90 || this.deg === 270;
-    // 写ルンですでフラッシュをたく時は、ライトを光らせて 1 枚撮る（窓口 版 6 から。ライトの無いカメラはふつうに撮る）
+    // フラッシュをたく時は、ライトを光らせて 1 枚撮る（窓口 版 6 から。ライトの無いカメラはふつうに撮る）
     const flash = !!this.settings.flash && bridge.bridgeVersion() >= bridge.FLASH_BRIDGE && (this.opened || {}).flash !== false;
     this.pendingLook = this.film ? {
       // 写ルンです: 明るさは合わせない（光の量から計算する）。写る範囲は 32mm 相当・3:2
@@ -1155,7 +1155,9 @@ export class Camera {
     bridge.haptic("confirm");
     this.view.classList.add("is-flash");
     setTimeout(() => this.view.classList.remove("is-flash"), 140);
-    bridge.cameraCall(flash ? "cameraCaptureFlash" : "cameraCapture", this.settings.sound);
+    // 写ルンですは、本物と同じに 1 回だけ光る（窓口 版 7 から）。サングラスは、予備の発光で明るさを決めてから光る
+    const once = flash && this.film && bridge.bridgeVersion() >= bridge.FLASH_ONCE_BRIDGE;
+    bridge.cameraCall(once ? "cameraCaptureFlashOnce" : flash ? "cameraCaptureFlash" : "cameraCapture", this.settings.sound);
     this.capturedTimer = setTimeout(() => (this.busy = false), flash ? 9000 : 4000);
   }
 

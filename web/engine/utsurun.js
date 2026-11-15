@@ -47,9 +47,10 @@ export function mixMatrix(Q = P) {
 
 // 元の画（ACES AP0、端末が決めた白）→ 昼の光の白の sRGB の原色（光の量に比例）。
 // フィルムは昼の光に合わせて作ってあり、撮る時に白を合わせない。電球の下は橙に、日かげは青く写る
-export function toDaylightSrgb(light, ap0ToSrgb) {
+// white: 白として扱う光（昼の光を 1 とした、センサーの色ごとの比）。省くと昼の光
+export function toDaylightSrgb(light, ap0ToSrgb, white = [1, 1, 1]) {
   if (!light || !Array.isArray(light.ratio) || !Array.isArray(light.cam) || light.cam.length !== 9) return ap0ToSrgb;
-  const r = light.ratio, camInv = inv3(light.cam);
+  const r = light.ratio.map((v, i) => v / white[i]), camInv = inv3(light.cam);
   if (!camInv || !(r[0] > 0 && r[1] > 0 && r[2] > 0)) return ap0ToSrgb;
   const m = mm3(mm3(mm3(light.cam, [r[0], 0, 0, 0, r[1], 0, 0, 0, r[2]]), camInv), ap0ToSrgb);
   return m.some((v) => !Number.isFinite(v)) ? ap0ToSrgb : m;
@@ -58,18 +59,60 @@ export function toDaylightSrgb(light, ap0ToSrgb) {
 // 元の画の値（センサーがあふれる量 = 1）→ フィルムに当たる光の量（lux 秒）の倍率。
 // 写ルンですは明るさを合わせないので、場面の本当の明るさで決まる。
 // 撮った時の感度・シャッター・絞りが分からない写真（JPEG など）は、画面の平均が灰色に写る量と置く。
-// 暗い場面の下限（FLOOR）: 本物は暗い室内でフラッシュ無しだとほぼ写らない（緑がかった黒いコマになる）。
-// アプリでは写真にならないので、画面の平均が「ちょうどよく写る量の FLOOR 倍」より少ない時は、そこまで光を足したことにする
-// （スマホが明るさを合わせて撮った画を、そのままフィルムに当てる。ライトをつけて撮った写真も同じ扱い）。
-// 明るい外は、本当の光の量のほうが多いので変わらない
-export const FLOOR = 0.5;
+// 暗い場面（DARK）: 本物は暗い室内でフラッシュ無しだとほぼ写らない（緑がかった黒いコマになる）。
+// アプリでは写真にならないので、画面の平均が「ちょうどよく写る量の floor 倍」より少ない時は、そこまで光を足したことにする
+// （スマホが明るさを合わせて撮った画を、そのままフィルムに当てる）。明るい外は、本当の光の量のほうが多いので変わらない。
+// floor は、粒の細かさで決めた（2026-11-15）: 光が少ないとネガが薄くなり、粒が粗く出る。明るい外のコマは平均が 6 倍くらい。
+// print = 光を足したコマを、写真屋の機械が暗めに焼く量（log10。足す前と同じ明るさの仕上がりにそろえる）
+export const DARK = { floor: 3, print: 0.1 };
+// フラッシュをたいた写真（2026-11-15）: 明るい所（フラッシュが当たった所）を基準に光の量を決め、届かない所は黒いまま残す。
+// hi = 元の画の明るい所（上から 5%）を、ちょうどよく写る量の何倍に置くか。
+// lift = 元の画の値をどこまで持ち上げてよいか（元の画の 18% の灰色が、ちょうどよく写る量の何倍までか）。
+// liftMax = 写真屋の機械が、薄いネガを明るく焼く量の上限（log10。ふつうのコマは P.lift_max）。print は DARK と同じ意味
+export const FLASH = { hi: 16, lift: 32, liftMax: 0.3, print: 0.2 };
+// スマホのフラッシュ（白い LED）の光の色。昼の光を 1 とした、センサーの色ごとの比（赤・緑・青）。
+// フラッシュの写真は、この光を白として写す（昼の光を白にすると緑がかる）。周りの明かり（電球など）は、その色のまま写る。
+// 端末が決めた白（撮る前の周りの明かりに合っていることがある）にはよらない。値は Xiaomi 17 Ultra のフラッシュの写真 6 枚のまん中
+export const FLASH_WHITE = [0.873, 1, 0.938];
+// 確かめ用（dev/check.html から値を差し替える。アプリでは空のまま）
+export const TUNE = {};
+const dark = () => ({ ...DARK, ...(TUNE.dark || {}) }), flashOf = () => ({ ...FLASH, ...(TUNE.flash || {}) });
 
-export function exposureScale(image, Q = P) {
+// 元の画の明るい所（上から 5% の所の明るさ）。小さな画（幅 160）から出す
+export function brightOf(small) {
+  if (!small || !small.length) return 0;
+  const n = small.length / 3, y = new Float32Array(n);
+  for (let i = 0; i < n; i++) y[i] = 0.3439664498 * small[i * 3] + 0.7281660966 * small[i * 3 + 1] - 0.0721325464 * small[i * 3 + 2];
+  return percentile(y.sort(), 95);
+}
+
+// k = 光の量の倍率。lifted = 光を足した度合い（0 = 本当の光の量のまま。本当の光の量の 6 倍より多く足したコマで 1）
+export function exposureOf(image, flash = false, Q = P) {
   const m = image.meta || {}, even = GRAY / Math.max(image.key || 0.18, 1e-6);
-  if (image.kind === "raw" && m.iso > 0 && m.shutter > 0 && m.aperture > 0) {
-    return Math.max((78 / m.iso) * (CAM.t / m.shutter) * Math.pow(m.aperture / CAM.N, 2) * Math.pow(10, Q.cal), even * FLOOR);
-  }
-  return even;
+  if (!(image.kind === "raw" && m.iso > 0 && m.shutter > 0 && m.aperture > 0)) return { k: even, lifted: 0 };
+  const real = (78 / m.iso) * (CAM.t / m.shutter) * Math.pow(m.aperture / CAM.N, 2) * Math.pow(10, Q.cal);
+  const F = flashOf(), hi = flash ? brightOf(image.small) : 0;
+  const floor = hi > 0 ? Math.min((GRAY * F.hi) / hi, (GRAY / 0.18) * F.lift) : even * dark().floor;
+  return { k: Math.max(real, floor), lifted: clamp(Math.log(floor / real) / Math.log(6), 0, 1) };
+}
+
+// 写真屋の機械の決まり。光を足したコマだけ、足した度合いに応じて焼きの明るさを変える（境目で仕上がりが急に変わらない）
+export function rules(flash, lifted, Q = P) {
+  if (!(lifted > 0)) return Q;
+  const F = flashOf(), print = (flash ? F.print : dark().print) * lifted;
+  return { ...Q, bias: Q.bias - print / Q.kd, lift_max: flash ? Q.lift_max + (Math.min(Q.lift_max, F.liftMax) - Q.lift_max) * lifted : Q.lift_max };
+}
+
+// センサーのノイズを消す強さ（0〜1）。撮った時の感度で決める。明るい外（感度が低い）は 0 で、何も変えない
+// sigma = ノイズの大きさの見積もり（光の量の平方根の上で）。感度と、持ち上げた量の平方根に比例する
+export const NR = { from: 300, full: 2400, c: 0.03, max: 0.3 };
+export function noiseSigma(meta, k) {
+  return clamp(NR.c * Math.sqrt((k / GRAY) * ((meta && meta.iso) || 100) / 100), 0.02, NR.max);
+}
+export function noiseAmount(meta) {
+  const iso = meta && meta.iso;
+  if (!(iso > NR.from)) return 0;
+  return clamp(Math.log(iso / NR.from) / Math.log(NR.full / NR.from), 0, 1);
 }
 
 // 写ルンですの画角（32mm 相当・3:2）の切り抜き。ratio = 撮ったレンズの焦点距離 ÷ 32（メインの 23mm なら 23/32。1 なら縦横の比だけ）

@@ -90,7 +90,7 @@ public class MainActivity extends Activity {
     private static final String HOST = BuildConfig.HOST;
     private static final String START_URL = BuildConfig.START_URL;
     private static final String LOCAL = BuildConfig.LOCAL_PREFIX;
-    private static final int BRIDGE_VERSION = 6; // 6: 写ルンですの撮り方（ライトをつけた 2 枚撮り。2026-11-15）、5: 拡大・個別のレンズ（2026-11-13）、 2: 撮る機能、3: 核を 2 つ混ぜる・手動のシャッター速度など（2026-11-05）、4: 写真の削除（2026-11-06）
+    private static final int BRIDGE_VERSION = 7; // 7: 写ルンですの光り方（予備の発光なしで 1 回だけ光る。2026-11-15）、6: フラッシュをたいて撮る（2026-11-15）、5: 拡大・個別のレンズ（2026-11-13）、 2: 撮る機能、3: 核を 2 つ混ぜる・手動のシャッター速度など（2026-11-05）、4: 写真の削除（2026-11-06）
     private static final String ACTION_CAMERA = "jp.takumi.sunglasses.CAMERA";
     private static final int REQ_PICK = 1;
     private static final int REQ_CHOOSER = 2;
@@ -1093,11 +1093,17 @@ public class MainActivity extends Activity {
             camera.capture(sound);
         }
 
-        // 写ルンですの撮り方（版 6）: ライトをつけて撮り、暗い場面ではライトなしの 1 枚も続けて撮る。
+        // フラッシュをたいて撮る（版 6）: 予備の発光で明るさを決めてから、本番を 1 枚撮る。
         // 結果は sunglasses:captured（{ ok, item, flash: true }）
         @JavascriptInterface
         public void cameraCaptureFlash(boolean sound) {
             camera.captureFlash(sound);
+        }
+
+        // 写ルンですの光り方（版 7）: 予備の発光なしで、決めた明るさのまま 1 回だけ光らせて撮る
+        @JavascriptInterface
+        public void cameraCaptureFlashOnce(boolean sound) {
+            camera.captureFlash(sound, true);
         }
 
         @JavascriptInterface

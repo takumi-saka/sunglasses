@@ -102,6 +102,9 @@ final class CameraController {
     private long lastInfo;
     private final PreviewRenderer renderer;
     // フラッシュをたいて撮る（版 6）
+    // 写ルンですの光り方（予備の発光なしの 1 回）で使う、決め打ちの明るさ: 感度 1600・1/60 秒
+    private static final int ONCE_ISO = 1600;
+    private static final long ONCE_EXPOSURE = 16_666_667L;
     private static final long FLASH_MAX_EXPOSURE = 33_333_333L; // ライトをつけたまま撮る時のシャッターは 1/30 秒より長くしない
     private boolean hasFlash, flashBusy, strobe;
     private int torchMax;
@@ -808,6 +811,13 @@ final class CameraController {
     // 本来の発光を選べないカメラ: ライトをつけたまま、自動の明るさが落ち着くのを待って撮る。
     // ライトが無いカメラは、ふつうに 1 枚撮る
     void captureFlash(boolean withSound) {
+        captureFlash(withSound, false);
+    }
+
+    // once（版 7。写ルンですの光り方）: 予備の発光をせず、決めた明るさで 1 回だけ光らせて撮る。
+    //   本物の写ルンですと同じで、明るさは測らない（近い物は白く飛び、遠い物は暗く落ちる）。
+    //   手で明るさを決められないカメラでは、ふつうのフラッシュ（予備の発光つき）で撮る
+    void captureFlash(boolean withSound, final boolean once) {
         if (bg == null) return;
         bg.post(() -> {
             final boolean manual = manualSensor && manIso != null && manExp != null;
@@ -822,6 +832,7 @@ final class CameraController {
             final long t0 = System.currentTimeMillis();
             try {
                 if (manual) shootStrobe(true, ev, 0, 0, false);
+                else if (once && manualSensor) shootOnce(ev);
                 else if (strobe) precapture(ev, t0);
                 else torchThenShoot(ev, t0);
                 // 何かで止まった時は、次に撮れるように戻す
@@ -900,6 +911,54 @@ final class CameraController {
             else b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
             final String base = "SG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
             b.setTag(new String[]{"F", base, String.format(Locale.US, "ev=%.1f mode=%s pre=%d wait=%d/%dms", ev, manual ? "single" : "strobe", pre ? 1 : 0, waited, waitedMs)});
+            session.capture(b.build(), flashCallback, bg);
+        } catch (Exception e) {
+            flashFailed(e);
+        }
+    }
+
+    // 予備の発光なしで、決めた明るさのまま 1 回だけ光らせて撮る（写ルンですの光り方）。
+    // 明るさ（感度 × シャッター）は ONCE_ISO・ONCE_EXPOSURE の決め打ち。スマホのライトで 1m くらいの物がちょうどよく写る量。
+    // 周りが明るい時は、周りの光だけで白く飛ばないように、撮る画面の自動の明るさの 0.7 倍までに抑える
+    private void shootOnce(double ev) {
+        try {
+            Range<Integer> ir = chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+            Range<Long> tr = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
+            int isoMin = ir == null ? 50 : ir.getLower(), isoMax = ir == null ? 3200 : ir.getUpper();
+            double amount = (double) ONCE_ISO * ONCE_EXPOSURE; // 感度 × シャッター（ナノ秒）
+            Long et = lastPreview == null ? null : lastPreview.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            Integer iso = lastPreview == null ? null : lastPreview.get(CaptureResult.SENSOR_SENSITIVITY);
+            boolean capped = false;
+            if (et != null && iso != null && et > 0 && iso > 0 && 0.7 * iso * et < amount) {
+                amount = 0.7 * iso * et;
+                capped = true;
+            }
+            long t = ONCE_EXPOSURE;
+            int sv = (int) Math.round(amount / t);
+            if (sv > isoMax) sv = isoMax;
+            if (sv < isoMin) {
+                sv = isoMin;
+                t = Math.round(amount / sv);
+            }
+            if (tr != null) t = Math.max(tr.getLower(), Math.min(tr.getUpper(), t));
+            final String base = "SG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            CaptureRequest.Builder b = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            b.addTarget(rawReader.getSurface());
+            b.addTarget(previewSurface);
+            b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+            applyZoom(b);
+            if (presetSrgb) {
+                b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_PRESET_CURVE);
+                b.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB);
+            }
+            if (shadingMap) b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON);
+            applyManual(b);
+            b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
+            b.set(CaptureRequest.SENSOR_SENSITIVITY, sv);
+            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, t);
+            b.set(CaptureRequest.SENSOR_FRAME_DURATION, Math.max(t, 33_333_333L));
+            b.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_SINGLE);
+            b.setTag(new String[]{"F", base, String.format(Locale.US, "ev=%.1f mode=once set=%d,%.5f capped=%d", ev, sv, t / 1e9, capped ? 1 : 0)});
             session.capture(b.build(), flashCallback, bg);
         } catch (Exception e) {
             flashFailed(e);

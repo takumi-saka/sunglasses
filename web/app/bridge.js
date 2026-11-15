@@ -29,6 +29,8 @@ export function listRaw() {
 }
 // フラッシュをたいて撮る（窓口 版 6）
 export const FLASH_BRIDGE = 6;
+// 写ルンですの光り方（予備の発光なしで 1 回だけ光る。窓口 版 7）。古い APK では、ふつうのフラッシュで撮る
+export const FLASH_ONCE_BRIDGE = 7;
 // 写真を消す（窓口 版 4）。結果は sunglasses:deleted で届く。古い APK では false を返す
 export const DELETE_BRIDGE = 4;
 export function deleteMedia(items) {

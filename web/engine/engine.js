@@ -103,7 +103,7 @@ export function defaultParams() {
     grain: 0, grainSize: 0, halation: 0, bloom: 0, soften: 0,
     sharpen: 0, noise: 0, colorNoise: 0,
     bw: false,
-    flash: false, // フラッシュ（スマホのライト）をたいて撮った写真か（記録だけ。現像は変えない）
+    flash: false, // フラッシュをたいて撮った写真か（写ルンですの現像で、白と明るさの決め方が変わる）
     crop: { cx: 0.5, cy: 0.5, w: 1, h: 1, angle: 0 },
   };
 }
@@ -154,7 +154,7 @@ export class Engine {
       raw2f: S.FS_RAW2F, jpeg2f: S.FS_JPEG2F, develop: S.FS_DEVELOP, blur: S.FS_BLUR, copy: S.FS_COPY, nr: S.FS_NR,
       texture: S.FS_TEXTURE, clarity: S.FS_CLARITY, sharpen: S.FS_SHARPEN, noise: S.FS_NOISE, finish: S.FS_FINISH,
       halSrc: S.FS_HAL_SRC, halAdd: S.FS_HAL_ADD, bloomSrc: S.FS_BLOOM_SRC, final: S.FS_FINAL,
-      utsExpose: S.FS_UTS_EXPOSE, noise4: S.FS_NOISE4, utsFilm: S.FS_UTS_FILM, utsSharp: S.FS_UTS_SHARP,
+      utsExpose: S.FS_UTS_EXPOSE, utsNr: S.FS_UTS_NR, noise4: S.FS_NOISE4, utsFilm: S.FS_UTS_FILM, utsSharp: S.FS_UTS_SHARP,
     };
     this.progs = {};
     for (const [k, src] of Object.entries(fs)) this.progs[k] = this._program(S.VS, src, k);
@@ -600,11 +600,12 @@ export class Engine {
   // ---------- 写ルンです（2026-11-15。式は utsurun.js）----------
   // コマごとに 1 回だけ決める量（光の量の倍率・白の直し・写真屋の機械の合わせ）。切り抜きと露出のつまみが同じなら作り直さない
   _utsFrame(aspect) {
-    const P = this.params, im = this.image, key = JSON.stringify([P.crop, P.exposure, aspect.toFixed(4)]);
+    const P = this.params, im = this.image, flash = !!P.flash, key = JSON.stringify([P.crop, P.exposure, aspect.toFixed(4), flash]);
     if (this.utsCache && this.utsCache.key === key) return this.utsCache;
-    const toRgb = UT.toDaylightSrgb(im.meta && im.meta.light, this.ap0ToSrgb), k = UT.exposureScale(im);
-    const st = UT.frameStats(im.small, 160, Math.round(im.small.length / 480), this._cropToSrc(), toRgb, k, aspect, P.exposure);
-    this.utsCache = { key, toRgb, k, ...st };
+    // フラッシュの写真は、フラッシュの光を白として写す
+    const toRgb = UT.toDaylightSrgb(im.meta && im.meta.light, this.ap0ToSrgb, flash ? UT.FLASH_WHITE : undefined), { k, lifted } = UT.exposureOf(im, flash);
+    const st = UT.frameStats(im.small, 160, Math.round(im.small.length / 480), this._cropToSrc(), toRgb, k, aspect, P.exposure, UT.rules(flash, lifted));
+    this.utsCache = { key, toRgb, k, lifted, nr: UT.noiseAmount(im.meta), nrSigma: UT.noiseSigma(im.meta, k), ...st };
     return this.utsCache;
   }
 
@@ -620,9 +621,16 @@ export class Engine {
     const Q = UT.P, F = UT.FILM;
     const rt = () => this._rt(bw, bh);
     const toCrop = [bw / VW, 0, x0 / VW, 0, bh / VH, y0 / VH, 0, 0, 1];
-    const H = rt();
+    let H = rt();
     this._pass("utsExpose", H, { uSrc: src, uXf: xf, uToRgb: f.toRgb, uK: f.k / UT.GRAY });
     const scale = Math.max(VW, VH) / 1500;
+    if (f.nr > 0) {
+      // センサーのノイズ（暗い所で感度が上がった分のざらつきと色の点々）を、フィルムに当てる前に消す。粒はフィルムの粒だけにする
+      const o = rt();
+      this._pass("utsNr", o, { uH: H, uTexel: [1 / bw, 1 / bh], uStep: Math.max(1, scale), uAmt: f.nr, uSigma: f.nrSigma });
+      this._give(H);
+      H = o;
+    }
     const A = this._blur(H, Math.max(Q.blur[0] * scale, 0.3)), B = this._blur(H, Math.max(Q.blur[1] * scale, 0.3));
     this._give(H);
     // 粒: フィルムの上での 1 画素の大きさ（µm）から強さを決める（細かく描くほど、1 画素あたりの粒は強く、細かくなる）
@@ -809,8 +817,10 @@ export class Engine {
     const { small, key } = t;
     if (uts) {
       // 写ルンです: 小さな画の全体を 1 コマと見て、同じ流れで描く（粒は入れない）
-      const toRgb = UT.toDaylightSrgb(t.meta && t.meta.light, this.ap0ToSrgb), k = UT.exposureScale({ kind: t.kind || "raw", meta: t.meta, key });
-      const st = UT.frameStats(small, 160, Math.round(small.length / 480), I3, toRgb, k, w / h, params ? params.exposure || 0 : 0);
+      const flash = !!(params && params.flash);
+      const toRgb = UT.toDaylightSrgb(t.meta && t.meta.light, this.ap0ToSrgb, flash ? UT.FLASH_WHITE : undefined);
+      const { k, lifted } = UT.exposureOf({ kind: t.kind || "raw", meta: t.meta, key, small }, flash);
+      const st = UT.frameStats(small, 160, Math.round(small.length / 480), I3, toRgb, k, w / h, params ? params.exposure || 0 : 0, UT.rules(flash, lifted));
       const r = this._utsDraw(up, I3, { toRgb, k, ...st }, w, h, 0, 0, w, h, { grain: false });
       const out = this._rt(w, h, true);
       this._pass("final", out, { uRgb: r.rgb, uGlow: r.rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0 });

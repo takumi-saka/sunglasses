@@ -423,6 +423,38 @@ void main() {
   o = vec4(max(uToRgb * ap0, 0.0) * uK, 1.0);
 }`);
 
+// センサーのノイズを消す（光の量の平方根の上で。ノイズの大きさが明るさによらず、ほぼそろう）。
+// 明るさ: 近くの似た明るさの所だけでならす（輪郭は残る）。色: もっと広くならす（色の点々を消す）。uAmt = 0〜1
+export const FS_UTS_NR = fs(`
+uniform sampler2D uH;
+uniform vec2 uTexel;
+uniform float uStep;
+uniform float uAmt;
+uniform float uSigma;
+void main() {
+  vec3 c = sqrt(max(texture(uH, vUv).rgb, 0.0));
+  float cl = (c.r + c.g + c.b) / 3.0;
+  float sr = uSigma * 0.6;
+  float wl = 0.0, sl = 0.0, wc = 0.0;
+  vec3 sc = vec3(0.0);
+  for (int y = -3; y <= 3; y++) {
+    for (int x = -3; x <= 3; x++) {
+      vec2 off = vec2(float(x), float(y));
+      vec3 n = sqrt(max(texture(uH, vUv + off * uTexel * uStep).rgb, 0.0));
+      float nl = (n.r + n.g + n.b) / 3.0, dl = nl - cl, r2 = dot(off, off);
+      float w = exp(-r2 / 8.0 - dl * dl / (2.0 * sr * sr));
+      wl += w;
+      sl += w * nl;
+      float w2 = exp(-r2 / 18.0 - dl * dl / (50.0 * sr * sr));
+      wc += w2;
+      sc += w2 * (n - nl);
+    }
+  }
+  // 明るさのざらつきは半分だけ消す（細かい所を残す）。色の点々は全部消す
+  vec3 v = max(mix(cl, sl / wl, uAmt * 0.5) + mix(c - cl, sc / wc, uAmt), 0.0);
+  o = vec4(v * v, 1.0);
+}`);
+
 // 粒のもと 4 つ（rgb = フィルムの層ごと、a = 3 つの層で共通）。位置ごとに決まる、正規分布の白いノイズ
 export const FS_NOISE4 = fs(`
 uniform vec2 uOrigin;
