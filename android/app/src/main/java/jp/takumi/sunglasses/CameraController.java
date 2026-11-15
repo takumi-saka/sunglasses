@@ -101,15 +101,12 @@ final class CameraController {
     private final MediaActionSound shutter = new MediaActionSound();
     private long lastInfo;
     private final PreviewRenderer renderer;
-    // 写ルンですの撮り方（版 6）。ライトをつけて撮り、暗い場面ではライトなしの 1 枚も続けて撮る（2 枚の差からライトの光だけを取り出す）
-    private static final double PAIR_EV = 9.0; // 場面の明るさ（感度 100 の EV）がこれより暗い時だけ 2 枚撮る。明るい外ではライトの光を取り出せない
-    private static final long FLASH_MAX_EXPOSURE = 33_333_333L; // 2 枚撮りのシャッターは 1/30 秒より長くしない
-    private boolean hasFlash, flashBusy, pairEmitted;
-    private int torchMax, pairWant, pairDone;
+    // フラッシュをたいて撮る（版 6）
+    private static final long FLASH_MAX_EXPOSURE = 33_333_333L; // ライトをつけたまま撮る時のシャッターは 1/30 秒より長くしない
+    private boolean hasFlash, flashBusy, strobe;
+    private int torchMax;
     private TotalCaptureResult lastPreview;
-    private final Map<Long, String[]> roles = new HashMap<>(); // 撮った時刻 → { 役（F: ライトあり、A: ライトなし）, 名前の土台, 撮り方のメモ }
-    private JSONObject pairF, pairA;
-    private String pairError;
+    private final Map<Long, String[]> roles = new HashMap<>(); // 撮った時刻 → { "F", 名前の土台, 撮り方のメモ }（フラッシュをたいた 1 枚の目印）
 
     CameraController(Context ctx, PreviewRenderer renderer, Events events) {
         this.ctx = ctx;
@@ -280,6 +277,7 @@ final class CameraController {
                 Boolean fa = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
                 hasFlash = fa != null && fa;
                 torchMax = 0;
+                strobe = hasFlash && has(chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES), CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
                 if (hasFlash && android.os.Build.VERSION.SDK_INT >= 35) {
                     Integer lv = chars.get(CameraCharacteristics.FLASH_TORCH_STRENGTH_MAX_LEVEL);
                     if (lv != null) torchMax = lv;
@@ -740,11 +738,11 @@ final class CameraController {
             images.remove(ts);
             results.remove(ts);
         }
-        // 写ルンですの 2 枚撮りは、ライトありが SG_….dng、ライトなしが SG_…_A.dng（同じ土台の名前で 1 組）
+        // フラッシュをたいた 1 枚には、撮り方のメモが付いている
         final String[] role = roles.remove(ts);
         ContentResolver cr = ctx.getContentResolver();
         String name = role == null ? "SG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".dng"
-                : role[1] + ("A".equals(role[0]) ? "_A.dng" : ".dng");
+                : role[1] + ".dng";
         long taken = System.currentTimeMillis();
         Uri uri = null;
         try (DngCreator dng = new DngCreator(chars, res)) {
@@ -786,7 +784,7 @@ final class CameraController {
             item.put("mime", "image/x-adobe-dng");
             item.put("uri", uri.toString());
             if (role == null) emitCaptured(true, null, item);
-            else pairWritten(role[0], item, null);
+            else flashWritten(item, null);
         } catch (Exception e) {
             Log.w(TAG, "write", e);
             if (uri != null) {
@@ -797,20 +795,23 @@ final class CameraController {
                 }
             }
             if (role == null) emitCaptured(false, "保存できませんでした（" + e.getMessage() + "）", null);
-            else pairWritten(role[0], null, "保存できませんでした（" + e.getMessage() + "）");
+            else flashWritten(null, "保存できませんでした（" + e.getMessage() + "）");
         } finally {
             img.close();
         }
     }
 
-    // ---- 写ルンですの撮り方（版 6）----
-    // 流れ: ライトをつける → 明るさの自動が落ち着くのを待つ → その明るさから 1 段下げた手動の設定でライトありを撮る
-    //   → 暗い場面（PAIR_EV より暗い）では、ライトを消して数コマ待ち、同じ設定・同じピントでライトなしを撮る → ライトを消して撮る画面に戻す。
-    // ライトが無いカメラ・手動で撮れないカメラは、ふつうに 1 枚撮る
+    // ---- フラッシュをたいて撮る（版 6。どのカメラ・ルックでも同じ）----
+    // 明るさが自動の時: カメラ本来のフラッシュの発光で撮る。予備の発光で端末に明るさを決めさせ（precapture）、ON_ALWAYS_FLASH で 1 枚撮る。
+    //   懐中電灯の光らせ方（TORCH）より強く光るので、手前が明るく、奥が暗く落ちる。
+    // 明るさを手で決めている時: その値のまま、発光だけ足す（FLASH_MODE_SINGLE）。
+    // 本来の発光を選べないカメラ: ライトをつけたまま、自動の明るさが落ち着くのを待って撮る。
+    // ライトが無いカメラは、ふつうに 1 枚撮る
     void captureFlash(boolean withSound) {
         if (bg == null) return;
         bg.post(() -> {
-            if (session == null || device == null || rawReader == null || preview == null || !hasFlash || !manualSensor) {
+            final boolean manual = manualSensor && manIso != null && manExp != null;
+            if (session == null || device == null || rawReader == null || preview == null || !hasFlash || (!manual && !strobe && !manualSensor)) {
                 capture(withSound);
                 return;
             }
@@ -818,38 +819,11 @@ final class CameraController {
             sound = withSound;
             flashBusy = true;
             final double ev = sceneEv(lastPreview);
-            final boolean pair = false; // ライトありの 1 枚だけを撮る（ライトなしとの 2 枚撮りと合成はやめた。2026-11-15 本人）
             final long t0 = System.currentTimeMillis();
-            final int[] frames = {0};
-            final boolean[] fired = {false};
             try {
-                setTorch(preview, true);
-                session.setRepeatingRequest(preview.build(), new CameraCaptureSession.CaptureCallback() {
-                    @Override
-                    public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest r, TotalCaptureResult res) {
-                        if (fired[0]) return;
-                        Integer fm = r.get(CaptureRequest.FLASH_MODE);
-                        if (fm == null || fm != CameraMetadata.FLASH_MODE_TORCH) return; // ライトをつける前に出した画
-                        frames[0]++;
-                        Integer fs = res.get(CaptureResult.FLASH_STATE);
-                        Integer ae = res.get(CaptureResult.CONTROL_AE_STATE);
-                        boolean lit = fs == null || fs == CameraMetadata.FLASH_STATE_FIRED;
-                        boolean steady = ae == null || ae == CameraMetadata.CONTROL_AE_STATE_CONVERGED || ae == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED
-                                || ae == CameraMetadata.CONTROL_AE_STATE_LOCKED || ae == CameraMetadata.CONTROL_AE_STATE_INACTIVE;
-                        long dt = System.currentTimeMillis() - t0;
-                        if ((frames[0] >= 4 && lit && steady && dt >= 200) || dt >= 1000) {
-                            fired[0] = true;
-                            shootFlash(res, pair, ev, frames[0], dt);
-                        }
-                    }
-                }, bg);
-                // 画が来ない時の逃げ道
-                bg.postDelayed(() -> {
-                    if (!fired[0] && flashBusy) {
-                        fired[0] = true;
-                        shootFlash(lastPreview, pair, ev, frames[0], System.currentTimeMillis() - t0);
-                    }
-                }, 1600);
+                if (manual) shootStrobe(true, ev, 0, 0, false);
+                else if (strobe) precapture(ev, t0);
+                else torchThenShoot(ev, t0);
                 // 何かで止まった時は、次に撮れるように戻す
                 bg.postDelayed(() -> {
                     if (flashBusy && System.currentTimeMillis() - t0 >= 7900) {
@@ -858,12 +832,141 @@ final class CameraController {
                     }
                 }, 8000);
             } catch (Exception e) {
-                Log.w(TAG, "flash", e);
-                restorePreview();
-                flashBusy = false;
-                emitCaptured(false, "撮れませんでした（" + e.getMessage() + "）", null);
+                flashFailed(e);
             }
         });
+    }
+
+    private void flashFailed(Exception e) {
+        Log.w(TAG, "flash", e);
+        restorePreview();
+        flashBusy = false;
+        emitCaptured(false, "撮れませんでした（" + e.getMessage() + "）", null);
+    }
+
+    // 予備の発光で、端末にフラッシュありの明るさを決めさせる。決まったら（長くて 2.5 秒）本番を撮る
+    private void precapture(final double ev, final long t0) throws CameraAccessException {
+        final boolean[] fired = {false}, seen = {false};
+        final int[] frames = {0};
+        CameraCaptureSession.CaptureCallback cb = new CameraCaptureSession.CaptureCallback() {
+            @Override
+            public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest r, TotalCaptureResult res) {
+                if (fired[0]) return;
+                Integer m = r.get(CaptureRequest.CONTROL_AE_MODE);
+                if (m == null || m != CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH) return; // 切り替える前に出した画
+                frames[0]++;
+                Integer ae = res.get(CaptureResult.CONTROL_AE_STATE);
+                long dt = System.currentTimeMillis() - t0;
+                if (ae != null && ae == CameraMetadata.CONTROL_AE_STATE_PRECAPTURE) seen[0] = true;
+                boolean steady = ae == null || ae == CameraMetadata.CONTROL_AE_STATE_CONVERGED || ae == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED
+                        || ae == CameraMetadata.CONTROL_AE_STATE_LOCKED;
+                // 予備の発光が始まって終わった時か、始まった知らせが無いまま 0.6 秒たって落ち着いている時
+                if ((steady && frames[0] >= 2 && (seen[0] || dt >= 600)) || dt >= 2500) {
+                    fired[0] = true;
+                    shootStrobe(false, ev, frames[0], dt, seen[0]);
+                }
+            }
+        };
+        preview.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
+        session.setRepeatingRequest(preview.build(), cb, bg);
+        preview.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+        session.capture(preview.build(), cb, bg);
+        preview.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
+        // 画が来ない時の逃げ道
+        bg.postDelayed(() -> {
+            if (!fired[0] && flashBusy) {
+                fired[0] = true;
+                shootStrobe(false, ev, frames[0], System.currentTimeMillis() - t0, seen[0]);
+            }
+        }, 3200);
+    }
+
+    // 本来の発光で 1 枚撮る。manual: 明るさを手で決めている（その値のまま、発光だけ足す）
+    private void shootStrobe(boolean manual, double ev, int waited, long waitedMs, boolean pre) {
+        try {
+            CaptureRequest.Builder b = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            b.addTarget(rawReader.getSurface());
+            b.addTarget(previewSurface);
+            b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+            applyZoom(b);
+            if (preview.get(CaptureRequest.CONTROL_AE_REGIONS) != null) b.set(CaptureRequest.CONTROL_AE_REGIONS, preview.get(CaptureRequest.CONTROL_AE_REGIONS));
+            if (presetSrgb) {
+                b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_PRESET_CURVE);
+                b.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB);
+            }
+            if (shadingMap) b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON);
+            applyManual(b);
+            if (manual) b.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_SINGLE);
+            else b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
+            final String base = "SG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            b.setTag(new String[]{"F", base, String.format(Locale.US, "ev=%.1f mode=%s pre=%d wait=%d/%dms", ev, manual ? "single" : "strobe", pre ? 1 : 0, waited, waitedMs)});
+            session.capture(b.build(), flashCallback, bg);
+        } catch (Exception e) {
+            flashFailed(e);
+        }
+    }
+
+    // フラッシュをたいた 1 枚の受け取り。撮り終えたら、撮る画面を元に戻す
+    private final CameraCaptureSession.CaptureCallback flashCallback = new CameraCaptureSession.CaptureCallback() {
+        @Override
+        public void onCaptureStarted(CameraCaptureSession s, CaptureRequest r, long ts, long frame) {
+            if (sound) shutter.play(MediaActionSound.SHUTTER_CLICK);
+        }
+
+        @Override
+        public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest r, TotalCaptureResult res) {
+            restorePreview();
+            Long ts = res.get(CaptureResult.SENSOR_TIMESTAMP);
+            Object tag = r.getTag();
+            if (ts == null || !(tag instanceof String[])) {
+                flashWritten(null, "撮れませんでした");
+                return;
+            }
+            synchronized (images) {
+                results.put(ts, res);
+                roles.put(ts, (String[]) tag);
+            }
+            tryWrite(ts);
+        }
+
+        @Override
+        public void onCaptureFailed(CameraCaptureSession s, CaptureRequest r, android.hardware.camera2.CaptureFailure f) {
+            restorePreview();
+            flashWritten(null, "撮れませんでした（" + f.getReason() + "）");
+        }
+    };
+
+    // 本来の発光を選べないカメラ用: ライトをつけて、自動の明るさが落ち着くのを待つ（長くて 1 秒）
+    private void torchThenShoot(final double ev, final long t0) throws CameraAccessException {
+        final int[] frames = {0};
+        final boolean[] fired = {false};
+        setTorch(preview, true);
+        session.setRepeatingRequest(preview.build(), new CameraCaptureSession.CaptureCallback() {
+            @Override
+            public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest r, TotalCaptureResult res) {
+                if (fired[0]) return;
+                Integer fm = r.get(CaptureRequest.FLASH_MODE);
+                if (fm == null || fm != CameraMetadata.FLASH_MODE_TORCH) return; // ライトをつける前に出した画
+                frames[0]++;
+                Integer fs = res.get(CaptureResult.FLASH_STATE);
+                Integer ae = res.get(CaptureResult.CONTROL_AE_STATE);
+                boolean lit = fs == null || fs == CameraMetadata.FLASH_STATE_FIRED;
+                boolean steady = ae == null || ae == CameraMetadata.CONTROL_AE_STATE_CONVERGED || ae == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED
+                        || ae == CameraMetadata.CONTROL_AE_STATE_LOCKED || ae == CameraMetadata.CONTROL_AE_STATE_INACTIVE;
+                long dt = System.currentTimeMillis() - t0;
+                if ((frames[0] >= 4 && lit && steady && dt >= 200) || dt >= 1000) {
+                    fired[0] = true;
+                    shootTorch(res, ev, frames[0], dt);
+                }
+            }
+        }, bg);
+        // 画が来ない時の逃げ道
+        bg.postDelayed(() -> {
+            if (!fired[0] && flashBusy) {
+                fired[0] = true;
+                shootTorch(lastPreview, ev, frames[0], System.currentTimeMillis() - t0);
+            }
+        }, 1600);
     }
 
     // 場面の明るさ（感度 100 の EV）。撮る画面の自動の明るさの結果から出す
@@ -879,49 +982,30 @@ final class CameraController {
 
     private void setTorch(CaptureRequest.Builder b, boolean on) {
         b.set(CaptureRequest.FLASH_MODE, on ? CameraMetadata.FLASH_MODE_TORCH : CameraMetadata.FLASH_MODE_OFF);
-        // 強さを選べる端末（Android 15 から）は、いつも同じいちばん強い段で光らせる（光の量を計算で直すので、毎回同じ強さが要る）
+        // 強さを選べる端末（Android 15 から）は、いちばん強い段で光らせる
         if (on && torchMax > 1 && android.os.Build.VERSION.SDK_INT >= 35) b.set(CaptureRequest.FLASH_STRENGTH_LEVEL, torchMax);
     }
 
+    // 撮る画面を、フラッシュの前の設定（ライトなし・元の明るさの決め方）に戻す
     private void restorePreview() {
         try {
             if (preview == null || session == null) return;
             setTorch(preview, false);
+            applyManual(preview);
+            if (strobe) {
+                // 予備の発光で止まった明るさの自動を、動く状態に戻す
+                preview.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL);
+                session.capture(preview.build(), null, bg);
+                preview.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
+            }
             repeat();
         } catch (Exception e) {
             Log.w(TAG, "restore", e);
         }
     }
 
-    // 2 枚撮りの 1 コマ。感度・シャッター・ピントは手で決めた値に固定する（2 枚を同じ条件にして、差を取れるようにする）
-    private CaptureRequest flashRequest(boolean torch, boolean raw, int iso, long t, Float focus, Object tag) throws CameraAccessException {
-        CaptureRequest.Builder b = device.createCaptureRequest(raw ? CameraDevice.TEMPLATE_STILL_CAPTURE : CameraDevice.TEMPLATE_PREVIEW);
-        if (raw) b.addTarget(rawReader.getSurface());
-        b.addTarget(previewSurface);
-        b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
-        applyZoom(b);
-        if (presetSrgb) {
-            b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_PRESET_CURVE);
-            b.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB);
-        }
-        if (raw && shadingMap) b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON);
-        applyManual(b);
-        b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
-        b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
-        b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, t);
-        b.set(CaptureRequest.SENSOR_FRAME_DURATION, Math.max(t, 33_333_333L));
-        b.set(CaptureRequest.CONTROL_AWB_LOCK, true);
-        if (focus != null) {
-            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF);
-            b.set(CaptureRequest.LENS_FOCUS_DISTANCE, focus);
-        }
-        setTorch(b, torch);
-        if (tag != null) b.setTag(tag);
-        return b.build();
-    }
-
-    // lit: ライトをつけて明るさが落ち着いた時の、撮る画面の結果
-    private void shootFlash(CaptureResult lit, boolean pair, double ev, int waited, long waitedMs) {
+    // ライトをつけたまま 1 枚撮る。lit: ライトをつけて明るさが落ち着いた時の、撮る画面の結果。その明るさとピントのまま、手動の設定で撮る
+    private void shootTorch(CaptureResult lit, double ev, int waited, long waitedMs) {
         try {
             Long et = lit == null ? null : lit.get(CaptureResult.SENSOR_EXPOSURE_TIME);
             Integer iso = lit == null ? null : lit.get(CaptureResult.SENSOR_SENSITIVITY);
@@ -930,99 +1014,55 @@ final class CameraController {
             Range<Long> tr = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
             int isoMin = ir == null ? 50 : ir.getLower(), isoMax = ir == null ? 3200 : ir.getUpper();
             long t = et;
-            int s = Math.max(isoMin, Math.min(isoMax, iso));
-            // 明るさは、ライトをつけた時の自動の値のまま撮る（1 段下げていたのは合成のためで、やめた。2026-11-15）
-            while (t > FLASH_MAX_EXPOSURE && s * 2 <= isoMax) {
+            int sv = Math.max(isoMin, Math.min(isoMax, iso));
+            while (t > FLASH_MAX_EXPOSURE && sv * 2 <= isoMax) {
                 t /= 2;
-                s *= 2;
+                sv *= 2;
             }
             t = Math.min(t, FLASH_MAX_EXPOSURE);
             if (tr != null) t = Math.max(tr.getLower(), Math.min(tr.getUpper(), t));
             final Float focus = lit.get(CaptureResult.LENS_FOCUS_DISTANCE);
             final String base = "SG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-            final String note = String.format(Locale.US, "ev=%.1f pair=%d torch=%d wait=%d/%dms auto=%d,%.5f", ev, pair ? 1 : 0, torchMax, waited, waitedMs, iso, et / 1e9);
-            pairF = null;
-            pairA = null;
-            pairError = null;
-            pairEmitted = false;
-            pairWant = pair ? 2 : 1;
-            pairDone = 0;
-            final String last = pair ? "A" : "F";
-            List<CaptureRequest> burst = new ArrayList<>();
-            burst.add(flashRequest(true, true, s, t, focus, new String[]{"F", base, note}));
-            if (pair) {
-                // ライトが消えきるまで、数コマ流してから撮る
-                for (int i = 0; i < 3; i++) burst.add(flashRequest(false, false, s, t, focus, null));
-                burst.add(flashRequest(false, true, s, t, focus, new String[]{"A", base, note}));
+            CaptureRequest.Builder b = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            b.addTarget(rawReader.getSurface());
+            b.addTarget(previewSurface);
+            b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+            applyZoom(b);
+            if (presetSrgb) {
+                b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_PRESET_CURVE);
+                b.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB);
             }
-            session.stopRepeating(); // 連続の合間に、ライトをつけた撮る画面のコマが挟まらないようにする
-            session.captureBurst(burst, new CameraCaptureSession.CaptureCallback() {
-                @Override
-                public void onCaptureStarted(CameraCaptureSession s2, CaptureRequest r, long ts, long frame) {
-                    Object tag = r.getTag();
-                    if (sound && tag instanceof String[] && "F".equals(((String[]) tag)[0])) shutter.play(MediaActionSound.SHUTTER_CLICK);
-                }
-
-                @Override
-                public void onCaptureCompleted(CameraCaptureSession s2, CaptureRequest r, TotalCaptureResult res) {
-                    Object tag = r.getTag();
-                    if (!(tag instanceof String[])) return;
-                    String[] role = (String[]) tag;
-                    if (last.equals(role[0])) restorePreview();
-                    Long ts = res.get(CaptureResult.SENSOR_TIMESTAMP);
-                    if (ts == null) {
-                        pairWritten(role[0], null, "撮れませんでした");
-                        return;
-                    }
-                    synchronized (images) {
-                        results.put(ts, res);
-                        roles.put(ts, role);
-                    }
-                    tryWrite(ts);
-                }
-
-                @Override
-                public void onCaptureFailed(CameraCaptureSession s2, CaptureRequest r, android.hardware.camera2.CaptureFailure f) {
-                    Object tag = r.getTag();
-                    if (!(tag instanceof String[])) return;
-                    String[] role = (String[]) tag;
-                    if (last.equals(role[0])) restorePreview();
-                    pairWritten(role[0], null, "撮れませんでした（" + f.getReason() + "）");
-                }
-            }, bg);
+            if (shadingMap) b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON);
+            applyManual(b);
+            b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
+            b.set(CaptureRequest.SENSOR_SENSITIVITY, sv);
+            b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, t);
+            b.set(CaptureRequest.SENSOR_FRAME_DURATION, Math.max(t, 33_333_333L));
+            b.set(CaptureRequest.CONTROL_AWB_LOCK, true);
+            if (focus != null) {
+                b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF);
+                b.set(CaptureRequest.LENS_FOCUS_DISTANCE, focus);
+            }
+            setTorch(b, true);
+            b.setTag(new String[]{"F", base, String.format(Locale.US, "ev=%.1f mode=torch torch=%d wait=%d/%dms auto=%d,%.5f", ev, torchMax, waited, waitedMs, iso, et / 1e9)});
+            session.stopRepeating(); // ライトをつけた撮る画面のコマが挟まらないようにする
+            session.capture(b.build(), flashCallback, bg);
         } catch (Exception e) {
-            Log.w(TAG, "flash", e);
-            restorePreview();
-            flashBusy = false;
-            emitCaptured(false, "撮れませんでした（" + e.getMessage() + "）", null);
+            flashFailed(e);
         }
     }
 
-    // 2 枚（明るい場面は 1 枚）が保存できたら、1 組としてページへ知らせる。ライトありが主で、ライトなしは pair に入れる
-    private void pairWritten(String role, JSONObject item, String error) {
-        if ("F".equals(role)) pairF = item;
-        else pairA = item;
-        if (error != null) pairError = error;
-        if (++pairDone < pairWant || pairEmitted) return;
-        pairEmitted = true;
+    // フラッシュをたいた 1 枚が保存できたら（できなかったら）、ページへ知らせる
+    private void flashWritten(JSONObject item, String error) {
         flashBusy = false;
-        if (pairF == null) {
-            // ライトありが残らなかった時は、ライトなしだけを残さない
-            if (pairA != null) {
-                try {
-                    ctx.getContentResolver().delete(Uri.parse(pairA.getString("uri")), null, null);
-                } catch (Exception ignored) {
-                    // 消せなくても続ける
-                }
-            }
-            emitCaptured(false, pairError == null ? "撮れませんでした" : pairError, null);
+        if (item == null) {
+            emitCaptured(false, error == null ? "撮れませんでした" : error, null);
             return;
         }
         try {
             JSONObject o = new JSONObject();
             o.put("ok", true);
-            o.put("item", pairF);
-            if (pairA != null) o.put("pair", pairA);
+            o.put("item", item);
             o.put("flash", true);
             events.emit("sunglasses:captured", o.toString());
         } catch (Exception ignored) {

@@ -1094,7 +1094,7 @@ public class MainActivity extends Activity {
         }
 
         // 写ルンですの撮り方（版 6）: ライトをつけて撮り、暗い場面ではライトなしの 1 枚も続けて撮る。
-        // 結果は sunglasses:captured（{ ok, item, pair（ライトなしの 1 枚。撮った時だけ）, flash: true }）
+        // 結果は sunglasses:captured（{ ok, item, flash: true }）
         @JavascriptInterface
         public void cameraCaptureFlash(boolean sound) {
             camera.captureFlash(sound);

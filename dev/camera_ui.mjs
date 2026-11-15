@@ -69,11 +69,11 @@ await ctx.addInitScript(() => {
       rec("capture", s);
       setTimeout(() => fire("sunglasses:captured", { ok: true, item: { id: 77, volume: "external_primary", name: "SG_test.dng", dateTaken: Date.now(), dateModified: 1, width: 4096, height: 3072, folder: "DCIM/Sunglasses/" } }), 200);
     },
-    // 写ルンですの撮り方（窓口 版 6）: ライトありの 1 枚と、ライトなしの 1 枚（pair）
+    // フラッシュをたいて撮る（窓口 版 6）
     cameraCaptureFlash: (s) => {
       rec("captureFlash", s);
       const it = (id, name) => ({ id, volume: "external_primary", name, dateTaken: Date.now(), dateModified: 1, width: 4096, height: 3072, folder: "DCIM/Sunglasses/" });
-      setTimeout(() => fire("sunglasses:captured", { ok: true, flash: true, item: it(78, "SG_20261115_120000.dng"), pair: it(79, "SG_20261115_120000_A.dng") }), 300);
+      setTimeout(() => fire("sunglasses:captured", { ok: true, flash: true, item: it(78, "SG_20261115_120000.dng") }), 300);
     },
     storageFree: () => String(64e9), keepScreenOn: () => {}, haptic: (k) => rec("haptic", k), openUrl: () => {}, openAppSettings: () => {},
     pickFiles: () => {}, requestMediaPermission: () => {},

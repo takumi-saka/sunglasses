@@ -84,13 +84,13 @@ for (const [name, file] of [["ルック", "04_ルック"], ["ライト", "05_ラ
     await pick(2);
     looks.Blueを足した = await state();
     await shot("04b_ルック_CinemaとBlue");
-    await page.locator(".toggle-row .toggle").click();
+    await page.locator(".toggle-row .toggle").first().click();
     await page.waitForTimeout(900);
     looks.Cinemaをオフ = await state();
     await shot("04c_ルック_Blueだけ");
     await pick(0);
     looks.どちらもなし = await state();
-    await page.locator(".toggle-row .toggle").click();
+    await page.locator(".toggle-row .toggle").first().click();
     await page.waitForTimeout(900);
     looks.Cinemaに戻した = await state();
     log.push(["ルックの切り替え", looks]);

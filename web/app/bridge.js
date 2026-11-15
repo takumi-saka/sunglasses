@@ -27,25 +27,12 @@ export function listRaw() {
   if (fake()) return fake().listRaw();
   return real() ? JSON.parse(real().listRaw()) : [];
 }
-// 写ルンですの 2 枚撮り（窓口 版 6）: ライトありが SG_….dng、ライトなしが同じ土台の SG_…_A.dng。
-// 一覧にはライトありだけを出し、消す時は 2 枚とも消す
+// フラッシュをたいて撮る（窓口 版 6）
 export const FLASH_BRIDGE = 6;
-const lower = (it) => (it.name || "").toLowerCase();
-export function isPairAmbient(it, all) {
-  if (!/^sg_\d{8}_\d{6}_a\.dng$/.test(lower(it))) return false;
-  const main = lower(it).replace("_a.dng", ".dng");
-  return all.some((x) => lower(x) === main); // ライトありが無くなっている時は、ふつうの 1 枚として出す
-}
-export function pairOf(item, all = null) {
-  if (!/^sg_\d{8}_\d{6}\.dng$/.test(lower(item))) return null;
-  const name = lower(item).replace(".dng", "_a.dng");
-  return (all || listRaw()).find((x) => lower(x) === name) || null;
-}
 // 写真を消す（窓口 版 4）。結果は sunglasses:deleted で届く。古い APK では false を返す
 export const DELETE_BRIDGE = 4;
 export function deleteMedia(items) {
-  const all = listRaw(), pairs = items.map((it) => pairOf(it, all)).filter(Boolean);
-  const list = [...items, ...pairs].map((it) => ({ volume: it.volume, id: it.id }));
+  const list = items.map((it) => ({ volume: it.volume, id: it.id }));
   if (fake() && fake().deleteMedia) return fake().deleteMedia(list), true;
   if (!real() || bridgeVersion() < DELETE_BRIDGE) return false;
   real().deleteMedia(JSON.stringify(list));

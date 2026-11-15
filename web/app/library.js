@@ -72,7 +72,7 @@ export class Library {
     const perm = bridge.permission();
     this.renderBanner(perm);
     const all = perm === "none" ? [] : bridge.listRaw();
-    const items = all.filter((it) => !bridge.isPairAmbient(it, all)); // 写ルンですの 2 枚撮りの、ライトなしの 1 枚は出さない
+    const items = all;
     this.items = items;
     this.edited = await editedKeys();
     this.count.textContent = items.length ? `RAW ${items.length} 枚` : "";
