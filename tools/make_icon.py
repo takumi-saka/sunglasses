@@ -1,6 +1,7 @@
-"""サングラスのアイコンを作る（2026-11-05）。黒地に、夕方の海を映したレンズのサングラス。
+"""サングラスのアイコンを作る（2026-11-15 描き直し）。青緑の空の下、水平線に沈む日食と、水面に映る橙の光。
 
-Android のアイコン（前景の層）を5つの大きさで書き出す。背景の色は res/values/colors.xml の黒。
+Android のアイコン（前景の層）を 5 つの大きさで書き出す。画は前景 1 枚で地まで塗ってあり、
+見えるのは真ん中の 3 分の 2（丸や角丸に切られる）。外側には空と海をそのまま伸ばしてある。
 使い方: python -I tools/make_icon.py <android/app/src/main/res> [見本の PNG の書き出し先]
 """
 import sys
@@ -9,47 +10,43 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-S = 1728  # xxxhdpi（432 画素）の 4 倍で描いて縮める
+S = 3456  # xxxhdpi（432 画素）の 8 倍で描いて縮める
 DENS = {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}
-FRAME = (242, 234, 220, 255)
-TOP, MID, BOTTOM = (52, 150, 143), (20, 62, 66), (231, 164, 94)  # 空の青緑 → 暗い海 → 夕日
+K = S / 768  # 図案は 512 の方眼。全体 768 の真ん中に置く（まわり 128 ずつが切られる余白）
+OFF = 128
+SKY_TOP, SKY_LOW, SEA = (20, 57, 54), (42, 102, 96), (6, 19, 18)
+ORANGE, DEEP, BLACK = (240, 168, 80), (200, 100, 42), (5, 5, 5)
+HORIZON, SUN_R, GLOW_R = 318, 118, 118 * 1.42
+REFLECT = ((336, 250, 0.8), (358, 190, 0.6), (380, 130, 0.45), (402, 80, 0.3))  # 上の端・幅・濃さ
 
 
-def gradient(w, h):
-    g = Image.new("RGBA", (w, h))
-    px = g.load()
-    for y in range(h):
-        t = y / (h - 1)
-        a, b, u = (TOP, MID, t / 0.55) if t < 0.55 else (MID, BOTTOM, (t - 0.55) / 0.45)
-        c = tuple(round(a[i] + (b[i] - a[i]) * u) for i in range(3)) + (255,)
-        for x in range(w):
-            px[x, y] = c
-    return g
+def mix(a, b, t):
+    t = np.clip(t, 0, 1)[..., None]
+    return np.asarray(a, np.float32) * (1 - t) + np.asarray(b, np.float32) * t
 
 
 def draw():
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    w, h, gap, r = 500, 380, 120, 150
-    cx, cy = S // 2, 880
-    y0, y1 = cy - h // 2, cy + h // 2
-    lenses = [(cx - gap // 2 - w, y0, cx - gap // 2, y1), (cx + gap // 2, y0, cx + gap // 2 + w, y1)]
-    # 枠と、レンズをつなぐ橋
-    for x0, _, x1, _ in lenses:
-        d.rounded_rectangle((x0 - 24, y0 - 24, x1 + 24, y1 + 24), radius=r + 24, fill=FRAME)
-    d.rounded_rectangle((cx - gap // 2 - 30, y0 + 36, cx + gap // 2 + 30, y0 + 80), radius=20, fill=FRAME)
-    # レンズ（夕方の海を映した色）と、ななめの光の筋
-    for x0, _, x1, _ in lenses:
-        mask = Image.new("L", (S, S), 0)
-        ImageDraw.Draw(mask).rounded_rectangle((x0, y0, x1, y1), radius=r, fill=255)
+    y, x = np.mgrid[0:S, 0:S].astype(np.float32)
+    x, y = (x + 0.5) / K - OFF, (y + 0.5) / K - OFF  # 図案の方眼での位置
+    img = mix(SKY_TOP, SKY_LOW, y / (512 * 0.62))  # 空: 上が暗い青緑、水平線へ明るく
+    # 光の輪: 内側は橙、外へ深い橙になって消える
+    t = np.hypot(x - 256, y - HORIZON) / GLOW_R
+    col = mix(ORANGE, DEEP, (t - 0.72) / 0.14)
+    alpha = np.where(t < 0.72, 1, np.where(t < 0.86, 1 - 0.45 * (t - 0.72) / 0.14, 0.55 * (1 - t) / 0.14))
+    alpha = np.clip(alpha, 0, 1)[..., None]
+    img = img * (1 - alpha) + col * alpha
+    # 黒い太陽（縁は 1 画素ぶんぼかす）
+    edge = np.clip((SUN_R - np.hypot(x - 256, y - HORIZON)) * K + 0.5, 0, 1)[..., None]
+    img = img * (1 - edge) + np.asarray(BLACK, np.float32) * edge
+    img[y >= HORIZON] = SEA  # 水平線から下は海
+    out = Image.fromarray(np.clip(img + 0.5, 0, 255).astype(np.uint8)).convert("RGBA")
+    # 水面に映る光: 下へ行くほど短く、薄くなる横線
+    for top, w, a in REFLECT:
         layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-        layer.paste(gradient(x1 - x0, y1 - y0), (x0, y0))
-        img.paste(layer, (0, 0), mask)
-        shine = Image.new("L", (S, S), 0)
-        ImageDraw.Draw(shine).polygon([(x0 + 70, y0), (x0 + 190, y0), (x0, y0 + 250), (x0, y0 + 130)], fill=70)
-        shine = Image.fromarray(np.minimum(np.asarray(shine), np.asarray(mask)))
-        img.paste(Image.new("RGBA", (S, S), (255, 255, 255, 255)), (0, 0), shine)
-    return img
+        box = [round((v + OFF) * K) for v in (256 - w / 2, top, 256 + w / 2, top + 7)]
+        ImageDraw.Draw(layer).rounded_rectangle(box, radius=round(3.5 * K), fill=ORANGE + (round(255 * a),))
+        out.alpha_composite(layer)
+    return out
 
 
 def main(res_dir, preview=None):
@@ -59,14 +56,15 @@ def main(res_dir, preview=None):
         out = res / f"mipmap-{name}"
         out.mkdir(parents=True, exist_ok=True)
         img.resize((size, size), Image.LANCZOS).save(out / "ic_launcher_foreground.png")
-    if preview:
-        bg = Image.new("RGBA", (S, S), (11, 11, 11, 255))
-        bg.alpha_composite(img)
-        m = Image.new("L", (S, S), 0)
-        ImageDraw.Draw(m).rounded_rectangle((0, 0, S - 1, S - 1), radius=S // 4, fill=255)
-        out = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-        out.paste(bg, (0, 0), m)
-        out.resize((512, 512), Image.LANCZOS).save(preview)
+    if preview:  # 見える範囲（真ん中の 3 分の 2）を、角丸と丸に切って並べる
+        a = round(OFF * K)
+        vis = img.crop((a, a, S - a, S - a)).resize((512, 512), Image.LANCZOS)
+        sheet = Image.new("RGBA", (1104, 592), (32, 36, 43, 255))
+        for i, rad in enumerate((116, 256)):
+            m = Image.new("L", (2048, 2048), 0)
+            ImageDraw.Draw(m).rounded_rectangle((0, 0, 2047, 2047), radius=rad * 4, fill=255)
+            sheet.paste(vis, (40 + 552 * i, 40), m.resize((512, 512), Image.LANCZOS))
+        sheet.save(preview)
 
 
 if __name__ == "__main__":
