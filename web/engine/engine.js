@@ -56,7 +56,9 @@ export function lookParams(cinema, sun, level) {
 // bloomFrom は、つまみで足した白みがかかり始める明るさ（0〜1。shaders.js の FS_BLOOM_SRC）
 // 素の画（ルックなし）に入れるノイズ消しの量（つまみと同じ 0〜100）。2026-11-15
 export const NEUTRAL_NR = { colorNoise: 60, noise: 15 };
-export const KNOB_REF = { grain: 3, halation: 0.2, bloom: 1, soften: 0.5, bloomFrom: 0.55 };
+// 2026-11-15 粒・にじみ・やわらかさの目安を上げた（端まで上げても変わらない、を無くす）。白みは逆に強すぎたので、足す分を BLOOM_ADD 倍にする
+export const KNOB_REF = { grain: 15, halation: 1.0, bloom: 1, soften: 2.0, bloomFrom: 0.55 };
+export const BLOOM_ADD = 0.6;
 export const knobAmount = (base, ref, k) => Math.max(0, k <= 0 ? base * (1 + k / 100) : base + Math.max(base, ref) * (k / 100));
 
 // 2026-11-10 明るさの段ごとの粒の量（looks.json の grainCurve）。[[明るさ 0〜1, 倍率], …] の結び目を、
@@ -523,7 +525,7 @@ export class Engine {
       const sc = VW / 512;
       if (P.texture) {
         const b = this._blur(cur, 1.0 * sc), o = rt();
-        this._pass("texture", o, { uLab: cur, uBlur: b, uAmt: P.texture / 100 });
+        this._pass("texture", o, { uLab: cur, uBlur: b, uAmt: (P.texture / 100) * 2.5 });
         this._give(b);
         swap(o);
       }
@@ -537,7 +539,7 @@ export class Engine {
       if (soften > 0) swap(this._blur(cur, (soften * VW) / 2048));
       if (P.sharpen > 0) {
         const b = this._blur(cur, Math.max(0.7, VW / 2048)), o = rt();
-        this._pass("sharpen", o, { uLab: cur, uBlur: b, uAmt: (P.sharpen / 100) * 1.5, uThreshold: 0.4 });
+        this._pass("sharpen", o, { uLab: cur, uBlur: b, uAmt: (P.sharpen / 100) * 2.2, uThreshold: 0.4 });
         this._give(b);
         swap(o);
       }
@@ -573,7 +575,7 @@ export class Engine {
         out.rgb = o;
       }
       // 白み: ルックが元から持つ分と、つまみで足した分（shaders.js の FS_BLOOM_SRC）。合計は knobAmount と同じ
-      const bBase = knobAmount(core.bloom, core.ref.bloom, Math.min(P.bloom, 0)), bAdd = knobAmount(core.bloom, core.ref.bloom, P.bloom) - bBase;
+      const bBase = knobAmount(core.bloom, core.ref.bloom, Math.min(P.bloom, 0)), bAdd = (knobAmount(core.bloom, core.ref.bloom, P.bloom) - bBase) * BLOOM_ADD;
       if (bBase + bAdd > 0) {
         const s = rt();
         this._pass("bloomSrc", s, { uRgb: out.rgb, uBase: bBase, uAdd: bAdd, uFrom: core.ref.bloomFrom });
@@ -606,7 +608,7 @@ export class Engine {
     return {
       uContrast: P.contrast, uHighlights: P.highlights, uShadows: P.shadows, uWhites: P.whites, uBlacks: P.blacks,
       uTemp: P.temp, uTint: P.tint, uDehaze: P.dehaze,
-      uParam: [P.param.shadows, P.param.darks, P.param.lights, P.param.highlights].map((v) => (v / 100) * 0.08),
+      uParam: [P.param.shadows, P.param.darks, P.param.lights, P.param.highlights].map((v, i) => (v / 100) * [0.11, 0.12, 0.13, 0.14][i]),
       uCurveOn: curveOn ? 1 : 0, uCurves: this.curvesTex, uSat: P.saturation, uVib: P.vibrance,
       uHslOn: hslOn ? 1 : 0, uHslH: P.hsl.hue.map((v) => (v / 100) * 30), uHslS: P.hsl.sat.map((v) => v / 100),
       uHslL: P.hsl.lum.map((v) => (v / 100) * 15),

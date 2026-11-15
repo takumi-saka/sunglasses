@@ -459,6 +459,11 @@ export class Editor {
 
   knob(key, { path = key, label, value, def, min, max, fmt, track, snaps } = {}) {
     const k = KNOBS[key] || {};
+    // 2026-11-15 粒・にじみ・白み・やわらかさは、いまのルックが元から持つ量が 0 なら、下げる側を出さない（動かしても何も起きないため）
+    if (min === undefined && ["grain", "halation", "bloom", "soften"].includes(key) && this.engine && this.params) {
+      const base = this.engine._mixedCore(this.engine.lookFor(this.params))[key];
+      if (!(base > 0)) min = 0;
+    }
     return slider({
       label: label || k.label, min: min ?? k.min, max: max ?? k.max, step: k.step || 1, def: def ?? k.def ?? 0, fmt: fmt || k.fmt, track: track || k.track,
       value: value ?? this.params[key], snaps, onInput: (v) => this.setParam(path, v), onCommit: () => this.commit(),

@@ -140,19 +140,20 @@ vec3 knobs(vec3 lab) {
   float x = clamp(lab.x / 100.0, 0.0, 1.0);
   float c = clamp(uContrast / 100.0 * 0.5, -0.5, 0.5);
   x = x + c * 4.0 * x * (1.0 - x) * (x - 0.5);
-  x = x + uHighlights / 100.0 * 0.15 * sin(PI * clamp((x - 0.5) / 0.5, 0.0, 1.0));
-  x = x + uShadows / 100.0 * 0.15 * sin(PI * clamp(x / 0.5, 0.0, 1.0));
+  // 2026-11-15 つまみの効きの見直し: 端まで動かして物足りないことが無いよう、弱かった物を強めた（どれも明るさの順が入れ替わらない上限の内）
+  x = x + uHighlights / 100.0 * 0.18 * sin(PI * clamp((x - 0.4) / 0.6, 0.0, 1.0));
+  x = x + uShadows / 100.0 * 0.18 * sin(PI * clamp(x / 0.6, 0.0, 1.0));
   float y = 1.0 - x;
-  x = clamp(x + uWhites / 100.0 * 0.25 * x * x * x + uBlacks / 100.0 * 0.12 * y * y * y * y, 0.0, 1.0);
+  x = clamp(x + (uWhites > 0.0 ? uWhites / 100.0 * 0.45 * x * x : uWhites / 100.0 * 0.35 * x * x) + uBlacks / 100.0 * 0.30 * y * y * y, 0.0, 1.0);
   float k = 0.3 + 0.7 * x;
-  vec3 rgb = lab2rgb(vec3(x * 100.0, lab.y + uTint / 100.0 * 12.0 * k, lab.z + uTemp / 100.0 * 12.0 * k));
-  float d = uDehaze / 100.0 * 0.4;
+  vec3 rgb = lab2rgb(vec3(x * 100.0, lab.y + uTint / 100.0 * 18.0 * k, lab.z + uTemp / 100.0 * 18.0 * k));
+  float d = uDehaze / 100.0 * 0.18;
   if (d > 0.0) rgb = clamp((rgb - d * 0.8) / (1.0 - d * 0.8 + 1e-6), 0.0, 1.0);
   else if (d < 0.0) rgb = rgb * (1.0 + d) - d * 0.8;
   if (uParam.x != 0.0) rgb += uParam.x * sin(PI * clamp(rgb / 0.4, 0.0, 1.0));
   if (uParam.y != 0.0) rgb += uParam.y * sin(PI * clamp((rgb - 0.1) / 0.5, 0.0, 1.0));
   if (uParam.z != 0.0) rgb += uParam.z * sin(PI * clamp((rgb - 0.4) / 0.5, 0.0, 1.0));
-  if (uParam.w != 0.0) rgb += uParam.w * sin(PI * clamp((rgb - 0.6) / 0.4, 0.0, 1.0));
+  if (uParam.w != 0.0) rgb += uParam.w * sin(PI * clamp((rgb - 0.5) / 0.5, 0.0, 1.0));
   rgb = clamp(rgb, 0.0, 1.0);
   if (uCurveOn == 1) {
     rgb = vec3(curveAt(uCurves, 0, rgb.r), curveAt(uCurves, 0, rgb.g), curveAt(uCurves, 0, rgb.b));
@@ -164,7 +165,7 @@ vec3 knobs(vec3 lab) {
   float h = degrees(atan(l2.z, l2.y));
   if (h < 0.0) h += 360.0;
   float skin = (h > 20.0 && h < 70.0) ? 0.5 : 1.0;
-  C = C * (1.0 + uSat / 100.0) * (1.0 + uVib / 100.0 * (1.0 - min(C / 50.0, 1.0)) * skin);
+  C = C * (1.0 + uSat / 100.0) * max(1.0 + uVib / 100.0 * 1.5 * (1.0 - min(C / 50.0, 1.0)) * skin, 0.0);
   if (uHslOn == 1) {
     float hh = h < CENTERS[0] ? h + 360.0 : h;
     float dh = 0.0, ds = 0.0, dl = 0.0;

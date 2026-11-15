@@ -68,7 +68,7 @@
    "grain": 0.0,
    "knobRef": {
     "grain": 23.5,
-    "soften": 1.5
+    "soften": 2.5
    },
    "grainSize": 4.0,
    "colorNoise": 60,
@@ -147,8 +147,8 @@
    "soften": 0.5,
    "grain": 0.0,
    "knobRef": {
-    "grain": 12,
-    "soften": 1.5,
+    "grain": 18,
+    "soften": 2.5,
     "bloomFrom": 0.35
    },
    "grainSize": 15.0,
@@ -244,8 +244,8 @@
    "soften": 0.5,
    "grain": 0.0,
    "knobRef": {
-    "grain": 12,
-    "soften": 1.5,
+    "grain": 18,
+    "soften": 2.5,
     "bloomFrom": 0.35
    },
    "grainSize": 15.0,
@@ -341,8 +341,8 @@
    "soften": 0.5,
    "grain": 0.0,
    "knobRef": {
-    "grain": 12,
-    "soften": 1.5,
+    "grain": 18,
+    "soften": 2.5,
     "bloomFrom": 0.35
    },
    "grainSize": 20.0,
@@ -583,7 +583,7 @@
    "grain": 0.0,
    "knobRef": {
     "grain": 23.5,
-    "soften": 1.5
+    "soften": 2.5
    },
    "grainSize": 4.0,
    "colorNoise": 60,
@@ -699,7 +699,7 @@
    "grain": 0.0,
    "knobRef": {
     "grain": 23.5,
-    "soften": 1.5
+    "soften": 2.5
    },
    "grainSize": 4.0,
    "colorNoise": 60,
@@ -815,7 +815,7 @@
    "grain": 0.0,
    "knobRef": {
     "grain": 23.5,
-    "soften": 1.5
+    "soften": 2.5
    },
    "grainSize": 4.0,
    "colorNoise": 60,
