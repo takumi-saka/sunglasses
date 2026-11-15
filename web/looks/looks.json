@@ -145,7 +145,7 @@
    "bloom": 0.2,
    "bloomWarm": 0.0,
    "soften": 0.5,
-   "grain": 5.0,
+   "grain": 0.0,
    "knobRef": {
     "grain": 12,
     "soften": 1.5,
@@ -242,7 +242,7 @@
    "bloom": 0.2,
    "bloomWarm": 0.0,
    "soften": 0.5,
-   "grain": 5.0,
+   "grain": 0.0,
    "knobRef": {
     "grain": 12,
     "soften": 1.5,
@@ -339,7 +339,7 @@
    "bloom": 0.2,
    "bloomWarm": 0.0,
    "soften": 0.5,
-   "grain": 4.5,
+   "grain": 0.0,
    "knobRef": {
     "grain": 12,
     "soften": 1.5,
