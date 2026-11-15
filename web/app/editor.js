@@ -4,6 +4,7 @@
 import { indicator, water } from "./water.js";
 import { defaultParams, lookParams, lookState, sunCoreOf, sunGainOf, SUN_CORES } from "../engine/engine.js";
 import { shotInfo } from "../engine/exif.js";
+import { UTSURUN_CORE } from "../engine/utsurun.js";
 import * as bridge from "./bridge.js";
 import { cropForAspect, panCrop, rotateCrop, zoomCrop } from "./crop.js";
 import { curveEditor } from "./curve.js";
@@ -432,7 +433,8 @@ export class Editor {
   }
 
   renderTabs() {
-    this.tabs.replaceChildren(...GROUPS.map((g) => h("button", {
+    if (!this.groups().some((g) => g.id === this.group)) this.group = "basic"; // 出していないタブを開いたままにしない（写ルンですの現像に替えた時など）
+    this.tabs.replaceChildren(...this.groups().map((g) => h("button", {
       class: "tab" + (g.id === this.group ? " is-on" : "") + (this.params && this.groupChanged(g) ? " is-changed" : ""),
       onClick: () => this.showGroup(g.id),
     }, g.name)));
@@ -441,8 +443,13 @@ export class Editor {
     const p = this.params, st = lookState(p || AUTO);
     const sunName = st.sun ? this.engine.coreById(st.sun).name : "";
     const auto = p && p.core === AUTO_CORE && !st.sun;
-    this.coreChip.replaceChildren(h("small", {}, "ルック"), h("b", {}, st.cinema ? "Cinema" : sunName || "なし"),
+    this.coreChip.replaceChildren(h("small", {}, "ルック"), h("b", {}, st.film ? "写ルンです" : st.cinema ? "Cinema" : sunName || "なし"),
       st.cinema && st.sun ? h("span", { class: "plus" }, `＋ ${sunName} ${Math.round(st.level)}`) : "", auto ? h("span", { class: "auto" }, "自動") : "");
+  }
+
+  // 下の板に出すタブ。写ルンですの現像は、明るさと色のつまみを通さないので、効くものだけを出す
+  groups() {
+    return this.params && lookState(this.params).film ? GROUPS.filter((g) => ["core", "basic", "crop"].includes(g.id)) : GROUPS;
   }
 
   showGroup(id) {
@@ -472,11 +479,14 @@ export class Editor {
 
   renderPanel() {
     if (!this.params) return;
-    const g = GROUPS.find((x) => x.id === this.group) || GROUPS[1];
+    const film = lookState(this.params).film;
+    const g = this.groups().find((x) => x.id === this.group) || GROUPS[1];
     const body = [];
     if (g.id === "core") body.push(...this.corePanel());
     if (g.id === "basic") body.push(...[this.sunKnob()].filter(Boolean)); // よく使うの一番上に、足した Aftersun の強さ（足していない時は出さない）
-    if (g.knobs) body.push(...g.knobs.map((k) => this.knob(k)));
+    // 写ルンですの現像で効くのは、プリントの明るさ（露光量のつまみ）だけ
+    if (film && g.id === "basic") body.push(this.knob("exposure", { label: "プリントの明るさ" }), h("p", { class: "note" }, "写真屋がプリントを明るく・暗く焼く量です。色や明暗のつまみは、写ルンですの現像では使いません。"));
+    else if (g.knobs) body.push(...g.knobs.map((k) => this.knob(k)));
     if (g.curve) body.push(...this.curvePanel());
     if (g.bw) {
       body.push(h("label", { class: "toggle-row" }, h("span", {}, "白黒"), h("input", {
@@ -502,6 +512,19 @@ export class Editor {
       this.renderTabs();
       this.renderPanel();
     };
+    // 写ルンですの現像（2026-11-15。仮の形）: オンの間は Cinema・Aftersun を通さず、フィルムと写真屋の処理で描く。オフにすると Cinema に戻る
+    const setFilm = (on) => {
+      for (const [k, v] of Object.entries(on ? { core: UTSURUN_CORE, sun: null, sunLevel: 0 } : { core: AUTO_CORE, sun: null, sunLevel: AUTO.sunLevel })) this.setParam(k, v);
+      this.commit();
+      bridge.haptic("tick");
+      this.renderTabs();
+      this.renderPanel();
+    };
+    const filmRow = h("label", { class: "toggle-row" }, h("span", {}, "写ルンですで現像"), h("input", {
+      type: "checkbox", class: "toggle", checked: st.film ? "checked" : null,
+      onChange: (e) => setFilm(e.target.checked),
+    }));
+    if (st.film) return [filmRow, h("p", { class: "note" }, "フィルムと写真屋の処理で描いています。明るさは、撮った時の光の量で決まります（暗い所は暗く、にごって写ります）。")];
     const cinemaRow = h("label", { class: "toggle-row" }, h("span", {}, "Cinema"), h("input", {
       type: "checkbox", class: "toggle", checked: st.cinema ? "checked" : null,
       onChange: (e) => apply(e.target.checked, st.sun, st.level),
@@ -529,12 +552,12 @@ export class Editor {
       this.drawCoreThumbs(row);
     });
     const head = h("p", { class: "note" }, "Aftersun を足す");
-    if (!st.sun) return [cinemaRow, head, row, h("p", { class: "note" }, st.cinema ? "Cinema だけの画です。" : "ルックなし（素の画）です。")];
+    if (!st.sun) return [cinemaRow, head, row, h("p", { class: "note" }, st.cinema ? "Cinema だけの画です。" : "ルックなし（素の画）です。"), filmRow];
     const core = this.engine.coreById(st.sun), name = core.name, sc = sunCoreOf(core);
     const note = st.cinema ? `Sun Level は、0 で Cinema そのまま、100 で ${name} の色。明るさ・明暗は Cinema のままです。`
       : sc >= 100 ? `Sun Level は、0 で素の画、100 で ${name} そのまま。`
         : `Sun Level は、0 で素の画、${sc} で ${name} そのまま、100 でその ${sunGainOf(core)} 倍。${sc} で軽く止まります。`;
-    return [cinemaRow, head, row, this.sunKnob(), h("p", { class: "note" }, note)];
+    return [cinemaRow, head, row, this.sunKnob(), h("p", { class: "note" }, note), filmRow];
   }
 
   // 足した Aftersun の強さのつまみ（Sun Level）。足していない時は null
@@ -548,6 +571,7 @@ export class Editor {
   // いまのルックを言葉にする（例: Cinema ＋ Aftersun Blue 40）
   lookLabel(p) {
     const st = lookState(p), n = st.sun ? `${this.engine.coreById(st.sun).name} ${Math.round(st.level)}` : "";
+    if (st.film) return "写ルンです";
     return st.cinema ? (n ? `Cinema ＋ ${n}` : "Cinema") : n || "ルックなし";
   }
 

@@ -36,7 +36,9 @@ export const sunIntoOf = (core, sun) => {
   return !m ? null : typeof m === "string" ? m : m[sun] || m[SUN_CORES[0]];
 };
 // 値 → 画面で使う形 { cinema: Cinema がオンか, sun: 足している Aftersun の核（なしは null）, level: その強さ }
+// 写ルンですの現像（core が utsurun）は film: true。Cinema も Aftersun も通さない
 export function lookState(p) {
+  if (p.core === UT.UTSURUN_CORE) return { cinema: false, sun: null, level: 0, film: true };
   if (p.core === "cinema") {
     const level = p.sunLevel ?? 0;
     return { cinema: true, sun: level > 0 ? (SUN_CORES.includes(p.sun) ? p.sun : SUN_CORES[0]) : null, level };
@@ -223,7 +225,8 @@ export class Engine {
   // Aftersun+（id aftersun、最初の形）は、強さ 0.5 で弱めの核を挟む。ほかの核は、素の画からその核へなめらかに混ぜる
   lookFor(p) {
     // どちらもなし（Cinema オフ・Aftersun なし）: 素の画
-    if (p.core === NONE_CORE) return { A: this.cores[0], wA: 0, B: null, wB: 0, wN: 1 };
+    // 写ルンですの現像は別の流れ（_renderUtsurun）で描く。ここに来た時（比べる画など）は素の画
+    if (p.core === NONE_CORE || p.core === UT.UTSURUN_CORE) return { A: this.cores[0], wA: 0, B: null, wB: 0, wN: 1 };
     const c0 = this.coreById(p.core);
     if (c0.sunInto) {
       // シネマ: 0 でシネマそのまま、100 で「シネマの明暗で、選んだ Aftersun（p.sun）の色にした核」。素の画には戻さない
