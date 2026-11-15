@@ -54,6 +54,8 @@ export function lookParams(cinema, sun, level) {
 // （本人「白をいじっても全然変わらない」）。下げる側は今までどおり掛け算（−100 で 0）。上げる側は、核の量と目安の量
 // （KNOB_REF。looks.json の knobRef で核ごとに変えられる）の大きいほうを 100 あたりに足す。核の量が目安以上のルックは前と同じ動き
 // bloomFrom は、つまみで足した白みがかかり始める明るさ（0〜1。shaders.js の FS_BLOOM_SRC）
+// 素の画（ルックなし）に入れるノイズ消しの量（つまみと同じ 0〜100）。2026-11-15
+export const NEUTRAL_NR = { colorNoise: 60, noise: 15 };
 export const KNOB_REF = { grain: 3, halation: 0.2, bloom: 1, soften: 0.5, bloomFrom: 0.55 };
 export const knobAmount = (base, ref, k) => Math.max(0, k <= 0 ? base * (1 + k / 100) : base + Math.max(base, ref) * (k / 100));
 
@@ -508,10 +510,14 @@ export class Engine {
       // 2026-11-10 カラーノイズ軽減 = 核の値（looks.json の colorNoise、つまみと同じ 0〜100）＋ つまみ、を 0〜100 で止める。
       // 核の値は、にじみなどと同じく Sun Level の重みで効き、素の画では 0。つまみは 0〜100 のまま（初期値 0 で核のまま、上げると足す）。
       // 掛け算（核 ×（1 ＋ つまみ））にしないのは、つまみが 0 からしか動かず、核の値が 0 の核ではつまみが効かなくなるため
-      const chroma = C.clamp((core.colorNoise || 0) + P.colorNoise, 0, 100);
-      if (P.noise > 0 || chroma > 0) {
+      // 2026-11-15 素の画にも、センサーのノイズを消す分を入れる（本人「全部オフなら RAW で撮ったみたいな写真になっていないとおかしい」）。
+      // ルックの核が持つ分とは別に、素の画の重み（wN）に比例して効かせる。量は NEUTRAL_NR（細かい所は残り、平らな所のざらつきが半分以下）
+      const wNeutral = C.clamp(lk.wN, 0, 1);
+      const chroma = C.clamp((core.colorNoise || 0) + NEUTRAL_NR.colorNoise * wNeutral + P.colorNoise, 0, 100);
+      const luma = C.clamp(NEUTRAL_NR.noise * wNeutral + P.noise, 0, 100);
+      if (luma > 0 || chroma > 0) {
         const o = rt();
-        this._pass("nr", o, { uLab: cur, uTexel: [1 / bw, 1 / bh], uStep: Math.max(1, VW / 4096), uLuma: (P.noise / 100) * 6, uChroma: chroma / 100 });
+        this._pass("nr", o, { uLab: cur, uTexel: [1 / bw, 1 / bh], uStep: Math.max(1, VW / 4096), uLuma: (luma / 100) * 6, uChroma: chroma / 100 });
         swap(o);
       }
       const sc = VW / 512;
