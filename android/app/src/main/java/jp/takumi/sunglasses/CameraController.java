@@ -101,6 +101,15 @@ final class CameraController {
     private final MediaActionSound shutter = new MediaActionSound();
     private long lastInfo;
     private final PreviewRenderer renderer;
+    // 写ルンですの撮り方（版 6）。ライトをつけて撮り、暗い場面ではライトなしの 1 枚も続けて撮る（2 枚の差からライトの光だけを取り出す）
+    private static final double PAIR_EV = 9.0; // 場面の明るさ（感度 100 の EV）がこれより暗い時だけ 2 枚撮る。明るい外ではライトの光を取り出せない
+    private static final long FLASH_MAX_EXPOSURE = 33_333_333L; // 2 枚撮りのシャッターは 1/30 秒より長くしない
+    private boolean hasFlash, flashBusy, pairEmitted;
+    private int torchMax, pairWant, pairDone;
+    private TotalCaptureResult lastPreview;
+    private final Map<Long, String[]> roles = new HashMap<>(); // 撮った時刻 → { 役（F: ライトあり、A: ライトなし）, 名前の土台, 撮り方のメモ }
+    private JSONObject pairF, pairA;
+    private String pairError;
 
     CameraController(Context ctx, PreviewRenderer renderer, Events events) {
         this.ctx = ctx;
@@ -268,6 +277,15 @@ final class CameraController {
                 int[] caps = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
                 manualSensor = has(caps, CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR);
                 manualPost = has(caps, CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING);
+                Boolean fa = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                hasFlash = fa != null && fa;
+                torchMax = 0;
+                if (hasFlash && android.os.Build.VERSION.SDK_INT >= 35) {
+                    Integer lv = chars.get(CameraCharacteristics.FLASH_TORCH_STRENGTH_MAX_LEVEL);
+                    if (lv != null) torchMax = lv;
+                }
+                flashBusy = false;
+                lastPreview = null;
                 Range<Integer> er = chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
                 Rational es = chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
                 evMin = er == null ? 0 : er.getLower();
@@ -397,6 +415,7 @@ final class CameraController {
         session.setRepeatingRequest(preview.build(), new CameraCaptureSession.CaptureCallback() {
             @Override
             public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest r, TotalCaptureResult res) {
+                lastPreview = res;
                 long now = System.currentTimeMillis();
                 if (now - lastInfo < 300) return;
                 lastInfo = now;
@@ -439,6 +458,8 @@ final class CameraController {
             o.put("evMax", evMax * evStep);
             o.put("evStep", evStep);
             o.put("zoomMax", zoomMax);
+            o.put("flash", hasFlash);
+            o.put("torchMax", torchMax);
             Integer so = chars.get(CameraCharacteristics.SENSOR_ORIENTATION);
             o.put("sensorOrientation", so == null ? 90 : so);
             events.emit("sunglasses:camera", o.toString());
@@ -482,6 +503,8 @@ final class CameraController {
             images.clear();
         }
         results.clear();
+        roles.clear();
+        flashBusy = false;
     }
 
     // ---- 明るさの補正・ピント ----
@@ -717,13 +740,16 @@ final class CameraController {
             images.remove(ts);
             results.remove(ts);
         }
+        // 写ルンですの 2 枚撮りは、ライトありが SG_….dng、ライトなしが SG_…_A.dng（同じ土台の名前で 1 組）
+        final String[] role = roles.remove(ts);
         ContentResolver cr = ctx.getContentResolver();
-        String name = "SG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".dng";
+        String name = role == null ? "SG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".dng"
+                : role[1] + ("A".equals(role[0]) ? "_A.dng" : ".dng");
         long taken = System.currentTimeMillis();
         Uri uri = null;
         try (DngCreator dng = new DngCreator(chars, res)) {
             dng.setOrientation(exifOrientation());
-            dng.setDescription("Sunglasses");
+            dng.setDescription(role == null ? "Sunglasses" : "Sunglasses utsurun " + role[0] + " " + role[2] + " flash=" + res.get(CaptureResult.FLASH_STATE));
             ContentValues v = new ContentValues();
             v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
             v.put(MediaStore.MediaColumns.MIME_TYPE, "image/x-adobe-dng");
@@ -759,7 +785,8 @@ final class CameraController {
             item.put("folder", "DCIM/Sunglasses/");
             item.put("mime", "image/x-adobe-dng");
             item.put("uri", uri.toString());
-            emitCaptured(true, null, item);
+            if (role == null) emitCaptured(true, null, item);
+            else pairWritten(role[0], item, null);
         } catch (Exception e) {
             Log.w(TAG, "write", e);
             if (uri != null) {
@@ -769,9 +796,239 @@ final class CameraController {
                     // 消せなくても続ける
                 }
             }
-            emitCaptured(false, "保存できませんでした（" + e.getMessage() + "）", null);
+            if (role == null) emitCaptured(false, "保存できませんでした（" + e.getMessage() + "）", null);
+            else pairWritten(role[0], null, "保存できませんでした（" + e.getMessage() + "）");
         } finally {
             img.close();
+        }
+    }
+
+    // ---- 写ルンですの撮り方（版 6）----
+    // 流れ: ライトをつける → 明るさの自動が落ち着くのを待つ → その明るさから 1 段下げた手動の設定でライトありを撮る
+    //   → 暗い場面（PAIR_EV より暗い）では、ライトを消して数コマ待ち、同じ設定・同じピントでライトなしを撮る → ライトを消して撮る画面に戻す。
+    // ライトが無いカメラ・手動で撮れないカメラは、ふつうに 1 枚撮る
+    void captureFlash(boolean withSound) {
+        if (bg == null) return;
+        bg.post(() -> {
+            if (session == null || device == null || rawReader == null || preview == null || !hasFlash || !manualSensor) {
+                capture(withSound);
+                return;
+            }
+            if (flashBusy) return;
+            sound = withSound;
+            flashBusy = true;
+            final double ev = sceneEv(lastPreview);
+            final boolean pair = !(ev >= PAIR_EV); // 明るさが読めない時は 2 枚撮る
+            final long t0 = System.currentTimeMillis();
+            final int[] frames = {0};
+            final boolean[] fired = {false};
+            try {
+                setTorch(preview, true);
+                session.setRepeatingRequest(preview.build(), new CameraCaptureSession.CaptureCallback() {
+                    @Override
+                    public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest r, TotalCaptureResult res) {
+                        if (fired[0]) return;
+                        Integer fm = r.get(CaptureRequest.FLASH_MODE);
+                        if (fm == null || fm != CameraMetadata.FLASH_MODE_TORCH) return; // ライトをつける前に出した画
+                        frames[0]++;
+                        Integer fs = res.get(CaptureResult.FLASH_STATE);
+                        Integer ae = res.get(CaptureResult.CONTROL_AE_STATE);
+                        boolean lit = fs == null || fs == CameraMetadata.FLASH_STATE_FIRED;
+                        boolean steady = ae == null || ae == CameraMetadata.CONTROL_AE_STATE_CONVERGED || ae == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED
+                                || ae == CameraMetadata.CONTROL_AE_STATE_LOCKED || ae == CameraMetadata.CONTROL_AE_STATE_INACTIVE;
+                        long dt = System.currentTimeMillis() - t0;
+                        if ((frames[0] >= 4 && lit && steady && dt >= 200) || dt >= 1000) {
+                            fired[0] = true;
+                            shootFlash(res, pair, ev, frames[0], dt);
+                        }
+                    }
+                }, bg);
+                // 画が来ない時の逃げ道
+                bg.postDelayed(() -> {
+                    if (!fired[0] && flashBusy) {
+                        fired[0] = true;
+                        shootFlash(lastPreview, pair, ev, frames[0], System.currentTimeMillis() - t0);
+                    }
+                }, 1600);
+                // 何かで止まった時は、次に撮れるように戻す
+                bg.postDelayed(() -> {
+                    if (flashBusy && System.currentTimeMillis() - t0 >= 7900) {
+                        restorePreview();
+                        flashBusy = false;
+                    }
+                }, 8000);
+            } catch (Exception e) {
+                Log.w(TAG, "flash", e);
+                restorePreview();
+                flashBusy = false;
+                emitCaptured(false, "撮れませんでした（" + e.getMessage() + "）", null);
+            }
+        });
+    }
+
+    // 場面の明るさ（感度 100 の EV）。撮る画面の自動の明るさの結果から出す
+    private static double sceneEv(CaptureResult res) {
+        if (res == null) return Double.NaN;
+        Long et = res.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        Integer iso = res.get(CaptureResult.SENSOR_SENSITIVITY);
+        Float ap = res.get(CaptureResult.LENS_APERTURE);
+        if (et == null || iso == null || et <= 0 || iso <= 0) return Double.NaN;
+        double n = ap == null || ap <= 0 ? 1.8 : ap;
+        return Math.log(n * n / (et / 1e9) * 100.0 / iso) / Math.log(2);
+    }
+
+    private void setTorch(CaptureRequest.Builder b, boolean on) {
+        b.set(CaptureRequest.FLASH_MODE, on ? CameraMetadata.FLASH_MODE_TORCH : CameraMetadata.FLASH_MODE_OFF);
+        // 強さを選べる端末（Android 15 から）は、いつも同じいちばん強い段で光らせる（光の量を計算で直すので、毎回同じ強さが要る）
+        if (on && torchMax > 1 && android.os.Build.VERSION.SDK_INT >= 35) b.set(CaptureRequest.FLASH_STRENGTH_LEVEL, torchMax);
+    }
+
+    private void restorePreview() {
+        try {
+            if (preview == null || session == null) return;
+            setTorch(preview, false);
+            repeat();
+        } catch (Exception e) {
+            Log.w(TAG, "restore", e);
+        }
+    }
+
+    // 2 枚撮りの 1 コマ。感度・シャッター・ピントは手で決めた値に固定する（2 枚を同じ条件にして、差を取れるようにする）
+    private CaptureRequest flashRequest(boolean torch, boolean raw, int iso, long t, Float focus, Object tag) throws CameraAccessException {
+        CaptureRequest.Builder b = device.createCaptureRequest(raw ? CameraDevice.TEMPLATE_STILL_CAPTURE : CameraDevice.TEMPLATE_PREVIEW);
+        if (raw) b.addTarget(rawReader.getSurface());
+        b.addTarget(previewSurface);
+        b.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+        applyZoom(b);
+        if (presetSrgb) {
+            b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_PRESET_CURVE);
+            b.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB);
+        }
+        if (raw && shadingMap) b.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CameraMetadata.STATISTICS_LENS_SHADING_MAP_MODE_ON);
+        applyManual(b);
+        b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF);
+        b.set(CaptureRequest.SENSOR_SENSITIVITY, iso);
+        b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, t);
+        b.set(CaptureRequest.SENSOR_FRAME_DURATION, Math.max(t, 33_333_333L));
+        b.set(CaptureRequest.CONTROL_AWB_LOCK, true);
+        if (focus != null) {
+            b.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF);
+            b.set(CaptureRequest.LENS_FOCUS_DISTANCE, focus);
+        }
+        setTorch(b, torch);
+        if (tag != null) b.setTag(tag);
+        return b.build();
+    }
+
+    // lit: ライトをつけて明るさが落ち着いた時の、撮る画面の結果
+    private void shootFlash(CaptureResult lit, boolean pair, double ev, int waited, long waitedMs) {
+        try {
+            Long et = lit == null ? null : lit.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            Integer iso = lit == null ? null : lit.get(CaptureResult.SENSOR_SENSITIVITY);
+            if (et == null || iso == null || et <= 0 || iso <= 0) throw new IllegalStateException("明るさを読めませんでした");
+            Range<Integer> ir = chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+            Range<Long> tr = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
+            int isoMin = ir == null ? 50 : ir.getLower(), isoMax = ir == null ? 3200 : ir.getUpper();
+            long t = et;
+            int s = Math.max(isoMin, Math.min(isoMax, iso));
+            // 自動の明るさから 1 段下げる（近くの白い物を飛ばさない）
+            if (s >= isoMin * 2) s /= 2;
+            else t /= 2;
+            while (t > FLASH_MAX_EXPOSURE && s * 2 <= isoMax) {
+                t /= 2;
+                s *= 2;
+            }
+            t = Math.min(t, FLASH_MAX_EXPOSURE);
+            if (tr != null) t = Math.max(tr.getLower(), Math.min(tr.getUpper(), t));
+            final Float focus = lit.get(CaptureResult.LENS_FOCUS_DISTANCE);
+            final String base = "SG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            final String note = String.format(Locale.US, "ev=%.1f pair=%d torch=%d wait=%d/%dms auto=%d,%.5f", ev, pair ? 1 : 0, torchMax, waited, waitedMs, iso, et / 1e9);
+            pairF = null;
+            pairA = null;
+            pairError = null;
+            pairEmitted = false;
+            pairWant = pair ? 2 : 1;
+            pairDone = 0;
+            final String last = pair ? "A" : "F";
+            List<CaptureRequest> burst = new ArrayList<>();
+            burst.add(flashRequest(true, true, s, t, focus, new String[]{"F", base, note}));
+            if (pair) {
+                // ライトが消えきるまで、数コマ流してから撮る
+                for (int i = 0; i < 3; i++) burst.add(flashRequest(false, false, s, t, focus, null));
+                burst.add(flashRequest(false, true, s, t, focus, new String[]{"A", base, note}));
+            }
+            session.stopRepeating(); // 連続の合間に、ライトをつけた撮る画面のコマが挟まらないようにする
+            session.captureBurst(burst, new CameraCaptureSession.CaptureCallback() {
+                @Override
+                public void onCaptureStarted(CameraCaptureSession s2, CaptureRequest r, long ts, long frame) {
+                    Object tag = r.getTag();
+                    if (sound && tag instanceof String[] && "F".equals(((String[]) tag)[0])) shutter.play(MediaActionSound.SHUTTER_CLICK);
+                }
+
+                @Override
+                public void onCaptureCompleted(CameraCaptureSession s2, CaptureRequest r, TotalCaptureResult res) {
+                    Object tag = r.getTag();
+                    if (!(tag instanceof String[])) return;
+                    String[] role = (String[]) tag;
+                    if (last.equals(role[0])) restorePreview();
+                    Long ts = res.get(CaptureResult.SENSOR_TIMESTAMP);
+                    if (ts == null) {
+                        pairWritten(role[0], null, "撮れませんでした");
+                        return;
+                    }
+                    synchronized (images) {
+                        results.put(ts, res);
+                        roles.put(ts, role);
+                    }
+                    tryWrite(ts);
+                }
+
+                @Override
+                public void onCaptureFailed(CameraCaptureSession s2, CaptureRequest r, android.hardware.camera2.CaptureFailure f) {
+                    Object tag = r.getTag();
+                    if (!(tag instanceof String[])) return;
+                    String[] role = (String[]) tag;
+                    if (last.equals(role[0])) restorePreview();
+                    pairWritten(role[0], null, "撮れませんでした（" + f.getReason() + "）");
+                }
+            }, bg);
+        } catch (Exception e) {
+            Log.w(TAG, "flash", e);
+            restorePreview();
+            flashBusy = false;
+            emitCaptured(false, "撮れませんでした（" + e.getMessage() + "）", null);
+        }
+    }
+
+    // 2 枚（明るい場面は 1 枚）が保存できたら、1 組としてページへ知らせる。ライトありが主で、ライトなしは pair に入れる
+    private void pairWritten(String role, JSONObject item, String error) {
+        if ("F".equals(role)) pairF = item;
+        else pairA = item;
+        if (error != null) pairError = error;
+        if (++pairDone < pairWant || pairEmitted) return;
+        pairEmitted = true;
+        flashBusy = false;
+        if (pairF == null) {
+            // ライトありが残らなかった時は、ライトなしだけを残さない
+            if (pairA != null) {
+                try {
+                    ctx.getContentResolver().delete(Uri.parse(pairA.getString("uri")), null, null);
+                } catch (Exception ignored) {
+                    // 消せなくても続ける
+                }
+            }
+            emitCaptured(false, pairError == null ? "撮れませんでした" : pairError, null);
+            return;
+        }
+        try {
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("item", pairF);
+            if (pairA != null) o.put("pair", pairA);
+            o.put("flash", true);
+            events.emit("sunglasses:captured", o.toString());
+        } catch (Exception ignored) {
+            // 書けなければ何もしない
         }
     }
 

@@ -34,7 +34,7 @@ await ctx.addInitScript(() => {
   };
   window.__sceneLevel = 110;
   window.SunglassesBridge = {
-    version: () => 3, appInfo: () => JSON.stringify({ bridge: 3, model: "代わり" }),
+    version: () => window.__bridgeVersion || 3, appInfo: () => JSON.stringify({ bridge: 3, model: "代わり" }),
     mediaPermission: () => "full", listRaw: () => "[]", takeOpened: () => "[]", takeLaunch: () => "",
     cameraPermission: () => "granted", requestCameraPermission: () => rec("reqCam"),
     cameraInfo: () => JSON.stringify({ cameras: [{ id: "0", raw: true, rawSizes: ["4096x3072"], eq35: 23, iso: [50, 6400], exposure: [0.0001, 1], minFocus: 10, manualSensor: true, manualPost: true },
@@ -68,6 +68,12 @@ await ctx.addInitScript(() => {
     cameraCapture: (s) => {
       rec("capture", s);
       setTimeout(() => fire("sunglasses:captured", { ok: true, item: { id: 77, volume: "external_primary", name: "SG_test.dng", dateTaken: Date.now(), dateModified: 1, width: 4096, height: 3072, folder: "DCIM/Sunglasses/" } }), 200);
+    },
+    // 写ルンですの撮り方（窓口 版 6）: ライトありの 1 枚と、ライトなしの 1 枚（pair）
+    cameraCaptureFlash: (s) => {
+      rec("captureFlash", s);
+      const it = (id, name) => ({ id, volume: "external_primary", name, dateTaken: Date.now(), dateModified: 1, width: 4096, height: 3072, folder: "DCIM/Sunglasses/" });
+      setTimeout(() => fire("sunglasses:captured", { ok: true, flash: true, item: it(78, "SG_20261115_120000.dng"), pair: it(79, "SG_20261115_120000_A.dng") }), 300);
     },
     storageFree: () => String(64e9), keepScreenOn: () => {}, haptic: (k) => rec("haptic", k), openUrl: () => {}, openAppSettings: () => {},
     pickFiles: () => {}, requestMediaPermission: () => {},
@@ -256,7 +262,7 @@ log.外をたたいた = { 一覧は閉じた: await page.locator("#cam-looks").
 // もう一度出して、5 番目（Aftersun Aqua。名前が長くなる）を選ぶ
 await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
 await page.waitForTimeout(300);
-await page.locator(".cam-look >> nth=4").click();
+await page.locator(".cam-look >> nth=6").click();
 await page.waitForTimeout(600);
 log.選んだあとのルック = { 名前: await page.locator("#cam-core b").textContent(), 一覧は閉じた: await page.locator("#cam-looks").evaluate((el) => el.hidden), 長い名前の印: await page.locator("#cam-core").evaluate((el) => el.classList.contains("is-long")), 重み: (await calls("w")).slice(-1) };
 const cb2 = await page.locator("#cam-core").boundingBox(), sb = await page.locator("#cam-shutter").boundingBox();
@@ -265,18 +271,18 @@ await shot("c7_あと");
 // 2026-11-13 Cinema をオフ（一覧は開いたまま）→ なし（ルックなし）→ Cinema をオン・Aftersun Aqua に戻す
 await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
 await page.waitForTimeout(300);
-await page.locator(".cam-look >> nth=0").click();
+await page.locator(".cam-look >> nth=2").click();
 await page.waitForTimeout(600);
 log.Cinemaをオフ = { 名前: await page.locator("#cam-core b").textContent(), 一覧は開いたまま: !(await page.locator("#cam-looks").evaluate((el) => el.hidden)), 並び: await page.locator(".cam-look").allTextContents(), 重み: (await calls("w")).slice(-1) };
-await page.locator(".cam-look >> nth=1").click();
+await page.locator(".cam-look >> nth=3").click();
 await page.waitForTimeout(600);
 log.どちらもなし = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1), SunLevelの見出しが隠れている: await page.locator(".cam-tab", { hasText: "Sun Level" }).first().evaluate((el) => el.hidden) };
 await shot("c7b_ルックなし");
 await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
 await page.waitForTimeout(300);
-await page.locator(".cam-look >> nth=0").click();
+await page.locator(".cam-look >> nth=2").click();
 await page.waitForTimeout(600);
-await page.locator(".cam-look >> nth=4").click();
+await page.locator(".cam-look >> nth=6").click();
 await page.waitForTimeout(600);
 log.戻したあと = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1) };
 // 横に倒したときの一覧
@@ -337,6 +343,47 @@ await page.locator("#cam-lenses .chip", { hasText: "100mm" }).click();
 await page.waitForTimeout(700);
 log.拡大.開けないレンズ = { 札: await chips(), 知らせ: await page.locator(".toast-text").last().textContent().catch(() => ""), 開いた順: (await calls("open")).slice(-2).map((c) => c[1]) };
 await shot("c10_開けないレンズ");
+// ---- 写ルンですのカメラ（2026-11-15）----
+{
+  const pickCam = async (name) => {
+    await page.click("#cam-core");
+    await page.waitForTimeout(300);
+    await page.locator(".cam-look", { hasText: name }).click();
+    await page.waitForTimeout(900);
+  };
+  await clear();
+  await pickCam("写ルンです");
+  log.写ルンです = {
+    名前: await page.locator("#cam-core b").textContent(), 札: await chips(), 枠: await page.evaluate(() => document.getElementById("cam-frame").dataset.frame),
+    倍率: (await calls("zoom")).slice(-1)[0], 重み: (await calls("w")).slice(-1)[0],
+    枠の字: await page.locator("#cam-set-frame b").textContent(), 送った手動の値: (await calls("manual")).slice(-1)[0], 送った露出: (await calls("ev")).slice(-1)[0],
+    つまみは隠れた: await page.evaluate(() => getComputedStyle(document.getElementById("cam-pro")).visibility === "hidden" && getComputedStyle(document.getElementById("cam-ev")).visibility === "hidden"),
+    決まりの値: await page.locator("#cam-fixed").innerText(),
+  };
+  await page.click("#cam-set-frame");
+  await page.waitForTimeout(300);
+  log.写ルンです.枠をたたいたあと = [await page.locator("#cam-set-frame b").textContent(), await page.evaluate(() => document.getElementById("cam-frame").dataset.frame)];
+  await page.waitForTimeout(1200);
+  await shot("d01_写ルンです");
+  await page.click("#cam-core");
+  await page.waitForTimeout(300);
+  await shot("d02_写ルンです_一覧");
+  await page.click("#cam-core");
+  await page.waitForTimeout(200);
+  await page.evaluate(() => (window.__bridgeVersion = 6));
+  await clear();
+  await page.click("#cam-shutter");
+  await page.waitForTimeout(1200);
+  log.写ルンです.撮る = { 呼んだ物: (await page.evaluate(() => window.__calls.map((c) => c[0]))).filter((n) => n.startsWith("capture")), 保存した値: await page.evaluate(async () => {
+    const { getEdit } = await import("/app/store.js");
+    const e = await getEdit("external_primary:78:1");
+    return e && e.params && { core: e.params.core, exposure: e.params.exposure, crop: e.params.crop };
+  }) };
+  await pickCam("サングラス");
+  log.写ルンです.戻したあと = { 名前: await page.locator("#cam-core b").textContent(), 札: await chips(), 枠: await page.evaluate(() => document.getElementById("cam-frame").dataset.frame), 倍率: (await calls("zoom")).slice(-1)[0],
+    枠の字: await page.locator("#cam-set-frame b").textContent(), つまみが出た: await page.evaluate(() => getComputedStyle(document.getElementById("cam-pro")).visibility === "visible" && document.getElementById("cam-fixed").hidden) };
+  await shot("d03_サングラスへ戻した");
+}
 fs.writeFileSync(path.join(outDir, "記録.json"), JSON.stringify({ log, errors }, null, 1));
 console.log(JSON.stringify({ log, errors }, null, 1));
 await browser.close();

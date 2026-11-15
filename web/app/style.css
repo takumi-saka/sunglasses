@@ -267,6 +267,7 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-view.is-flash::after { content: ""; position: absolute; inset: 0; background: #000; opacity: .65; }
 .cam-frame { position: absolute; inset: 0; pointer-events: none; }
 .cam-frame[data-frame="1.85"]::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; aspect-ratio: 1.85 / 1; transform: translateY(-50%); box-shadow: 0 0 0 2000px rgba(0,0,0,.42); outline: 1px solid rgba(255,255,255,.55); }
+.cam-frame[data-frame="3:2"]::before { content: ""; position: absolute; top: 0; height: 100%; left: 50%; aspect-ratio: 2 / 3; transform: translateX(-50%); box-shadow: 0 0 0 2000px rgba(0,0,0,.42); outline: 1px solid rgba(255,255,255,.55); }
 .cam-frame[data-frame="1.85"][data-land="1"]::before { left: 50%; right: auto; top: 0; height: 100%; aspect-ratio: 1 / 1.85; transform: translateX(-50%); }
 .cam-grid { position: absolute; inset: 0; pointer-events: none;
   background-image: linear-gradient(90deg, transparent calc(33.33% - .5px), rgba(255,255,255,.3) calc(33.33% - .5px), rgba(255,255,255,.3) calc(33.33% + .5px), transparent calc(33.33% + .5px), transparent calc(66.66% - .5px), rgba(255,255,255,.3) calc(66.66% - .5px), rgba(255,255,255,.3) calc(66.66% + .5px), transparent calc(66.66% + .5px)),
@@ -302,6 +303,13 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-deck { background: var(--body); padding: 2px 10px 4px; }
 .cam-deck > .cam-pro { background: #0f1112; border-radius: 26px 26px 0 0; }
 .cam-deck > .cam-ev { min-height: 76px; padding: 2px 0 4px; }
+/* 写ルンです：つまみの列は場所だけ残して隠し、カメラの決まりの値を出す */
+.cam-deck { position: relative; }
+.cam-deck.is-film > .cam-pro, .cam-deck.is-film > .cam-ev { visibility: hidden; }
+.cam-fixed { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.cam-fixed[hidden] { display: none; }
+.cam-fixed b { font-size: 19px; font-weight: 600; letter-spacing: .04em; color: var(--ink, #f2efe8); }
+.cam-fixed span { font-size: 12.5px; color: rgba(255,255,255,.5); }
 .cam-pro { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: 2px; height: 50px; padding: 4px 8px 0; }
 .cam-pro-cell { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-width: 0; height: 42px; border-radius: 16px; transition: background .15s; }
 .cam-pro-cell small { font: 9.5px var(--mono); color: var(--sub); }
