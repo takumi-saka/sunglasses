@@ -93,6 +93,14 @@ for (const [name, file] of [["ルック", "04_ルック"], ["ライト", "05_ラ
     await page.locator(".toggle-row .toggle").first().click();
     await page.waitForTimeout(900);
     looks.Cinemaに戻した = await state();
+    // 2026-11-19 単独のルック（Warm）: 選ぶと Cinema がオフになり、Cinema をオンにすると Warm が外れる
+    await page.locator(".core-box", { hasText: "Warm" }).click();
+    await page.waitForTimeout(900);
+    looks.Warmを選んだ = await state();
+    await shot("04d_ルック_Warm");
+    await page.locator(".toggle-row .toggle").first().click();
+    await page.waitForTimeout(900);
+    looks.WarmからCinemaをオン = await state();
     log.push(["ルックの切り替え", looks]);
   }
 }

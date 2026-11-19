@@ -869,6 +869,122 @@
    "clarity": 0.0,
    "vignette": 0.0,
    "sunGain": 1.0
+  },
+  {
+   "id": "warm",
+   "name": "Warm",
+   "desc": "暖色の、少し色あせたフィルムの見た目（2026-11-19）。MV（ILLIT「You're Under Arrest」Performance ver.）のコマを、本人が決めた「普通の写真」に戻し、その逆を核にした形: 全体を黄色〜オレンジ寄りに、中間を暗く（普通の 62 → 46）、白は 86 で止める、黒にうっすら緑、橙と黄は濃く・緑だけ半分に抜く。輪郭は少し甘く、粒は細かく少し。Cinema と一緒には使わない単独のルック（engine.js の SOLO_CORES）。Sun Level は 0 で素の画、100 でこの核そのまま。作った道具と数は _work/MVのルック_20261119/（逆算/版10_入力.json）",
+   "file": "warm.bin",
+   "size": 65,
+   "lo": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hi": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "lift": 0.0,
+   "meter": {
+    "skyWeight": 0.25,
+    "target": 33,
+    "whiteRank": 97,
+    "whiteRange": [
+     60,
+     84
+    ],
+    "liftLimit": 30,
+    "tapLiftLimit": 12,
+    "dropLimit": 12,
+    "whiteNoSky": true,
+    "skyCap": 50,
+    "night": {
+     "dark": [
+      -4,
+      1.6
+     ],
+     "target": 4,
+     "noLift": [
+      -3,
+      -1.5
+     ],
+     "lights": [
+      4,
+      6
+     ],
+     "floor": 3,
+     "isoMax": 12800
+    }
+   },
+   "keepLight": {
+    "from": 0.8,
+    "amount": 0.7
+   },
+   "sunDefault": 100,
+   "halation": 0.2,
+   "halationEdge": true,
+   "bloom": 0.25,
+   "bloomWarm": 0.0,
+   "soften": 0.9,
+   "grain": 4.0,
+   "knobRef": {
+    "grain": 23.5,
+    "soften": 2.5
+   },
+   "grainSize": 4.0,
+   "colorNoise": 60,
+   "grainCurve": [
+    [
+     0,
+     0.1
+    ],
+    [
+     0.03,
+     0.2
+    ],
+    [
+     0.1,
+     0.75
+    ],
+    [
+     0.2,
+     0.9
+    ],
+    [
+     0.4,
+     1.0
+    ],
+    [
+     0.5,
+     1.0
+    ],
+    [
+     0.6,
+     1.1
+    ],
+    [
+     0.7,
+     0.8
+    ],
+    [
+     0.8,
+     0.3
+    ],
+    [
+     0.9,
+     0.2
+    ],
+    [
+     1.0,
+     0.12
+    ]
+   ],
+   "texture": 0.0,
+   "clarity": 0.0,
+   "vignette": 0.0,
+   "sunGain": 1.0
   }
  ],
  "ap0ToAp1": [

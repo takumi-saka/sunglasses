@@ -285,6 +285,23 @@ await page.waitForTimeout(600);
 await page.locator(".cam-look >> nth=6").click();
 await page.waitForTimeout(600);
 log.戻したあと = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1) };
+// 2026-11-19 単独のルック（Warm）: 選ぶと Cinema がオフになり、Cinema をオンにすると Warm が外れる。終わったら Cinema・Aftersun Aqua に戻す
+await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+await page.waitForTimeout(300);
+await page.locator(".cam-look", { hasText: "Warm" }).click();
+await page.waitForTimeout(600);
+log.Warmを選んだ = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1), SunLevel: await page.evaluate(() => localStorage.getItem("cameraSunSolo")) };
+await shot("c7c_Warm");
+await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+await page.waitForTimeout(300);
+log.Warmのときの一覧 = { 並び: await page.locator(".cam-look").allTextContents(), 印: await page.locator(".cam-look.is-on").allTextContents() };
+await shot("c7d_Warmの一覧");
+await page.locator(".cam-look >> nth=2").click();
+await page.waitForTimeout(600);
+log.WarmからCinemaをオン = { 名前: await page.locator("#cam-core b").textContent(), 並び: await page.locator(".cam-look").allTextContents(), 印: await page.locator(".cam-look.is-on").allTextContents() };
+await page.locator(".cam-look >> nth=6").click();
+await page.waitForTimeout(600);
+log.Warmのあとに戻した = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1) };
 // 横に倒したときの一覧
 await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 90 } })));
 await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);

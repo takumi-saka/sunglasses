@@ -2,7 +2,7 @@
 // 写真の上: 押している間は元の画、2 回たたくと全画面、2 本指でつまむと拡大、拡大中は 1 本指で動かす。
 // 下の板: 核の箱・つまみ（よく使う／明るさ／色／色ごと／グレーディング／効果／細部／切り抜き）。
 import { indicator, water } from "./water.js";
-import { defaultParams, lookParams, lookState, sunCoreOf, sunGainOf, SUN_CORES } from "../engine/engine.js";
+import { defaultParams, lookParams, lookState, sunCoreOf, sunGainOf, SOLO_CORES, SUN_CORES } from "../engine/engine.js";
 import { shotInfo } from "../engine/exif.js";
 import { UTSURUN_CORE } from "../engine/utsurun.js";
 import * as bridge from "./bridge.js";
@@ -12,7 +12,7 @@ import { ASPECTS, GRADE_ZONES, GROUPS, HSL_COLORS, HSL_NAMES, KNOBS, changed } f
 import { deleteEdit, getEdit, pref, setEdit } from "./store.js";
 import { closeSheet, h, sheet, slider, toast } from "./ui.js";
 
-const CORE_BANDS = { cinema: ["#2f5d62", "#e6cf9a"], aftersun2: ["#9a9a6e", "#d9c7a4"], aftersun3: ["#5f8f7a", "#d9c7a4"], deepblue: ["#1d6f8c", "#d9c7a4"], aqua: ["#62bcb6", "#e8d6b0"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
+const CORE_BANDS = { cinema: ["#2f5d62", "#e6cf9a"], aftersun2: ["#9a9a6e", "#d9c7a4"], aftersun3: ["#5f8f7a", "#d9c7a4"], deepblue: ["#1d6f8c", "#d9c7a4"], aqua: ["#62bcb6", "#e8d6b0"], warm: ["#7a6a44", "#ead9ae"], aftersun: ["#3c9c96", "#e3a85f"], mine: ["#cdbb9c", "#6f86a6"], weak: ["#8cc2bd", "#d9c39b"] };
 const AUTO_CORE = "cinema"; // 2026-11-10 夜 直していない写真は Cinema（映画の見た目の核）で開く。前は aftersun2
 const AUTO = { core: AUTO_CORE, sunLevel: 0 }; // Cinema の Sun Level（Aftersun を足す量）は 0 がはじめの値
 const FLIP_DEG = { 3: 180, 5: -90, 6: 90 };
@@ -527,10 +527,11 @@ export class Editor {
     if (st.film) return [filmRow, h("p", { class: "note" }, "フィルムと写真屋の処理で描いています。明るい外は、撮った時の光の量のまま写ります。暗い所は、写る明るさまで持ち上げます。")];
     const cinemaRow = h("label", { class: "toggle-row" }, h("span", {}, "Cinema"), h("input", {
       type: "checkbox", class: "toggle", checked: st.cinema ? "checked" : null,
-      onChange: (e) => apply(e.target.checked, st.sun, st.level),
+      onChange: (e) => apply(e.target.checked, SOLO_CORES.includes(st.sun) ? null : st.sun, st.level), // 単独のルック（Warm）の時に Cinema をオンにしたら、Warm を外す
     }));
     // 前に直した写真が、一覧から外したルック（Nostalgia など）のままなら、その箱も出す（選び直すまでそのまま使える）
-    const ids = [null, ...SUN_CORES, ...(st.sun && !SUN_CORES.includes(st.sun) ? [st.sun] : [])];
+    const listed = [...SUN_CORES, ...SOLO_CORES];
+    const ids = [null, ...listed, ...(st.sun && !listed.includes(st.sun) ? [st.sun] : [])];
     const boxes = ids.map((id) => {
       const cv = h("canvas", { class: "core-cv" });
       const [c1, c2] = (id && CORE_BANDS[id]) || ["#555", "#999"];
@@ -551,10 +552,11 @@ export class Editor {
       else if (on) row.scrollLeft = Math.max(0, on.getBoundingClientRect().left - row.getBoundingClientRect().left + row.scrollLeft - (row.clientWidth - on.offsetWidth) / 2);
       this.drawCoreThumbs(row);
     });
-    const head = h("p", { class: "note" }, "Aftersun を足す");
+    const head = h("p", { class: "note" }, "Aftersun を足す・Warm に替える");
     if (!st.sun) return [cinemaRow, head, row, h("p", { class: "note" }, st.cinema ? "Cinema だけの画です。" : "ルックなし（素の画）です。"), filmRow];
     const core = this.engine.coreById(st.sun), name = core.name, sc = sunCoreOf(core);
-    const note = st.cinema ? `Sun Level は、0 で Cinema そのまま、100 で ${name} の色。明るさ・明暗は Cinema のままです。`
+    const note = SOLO_CORES.includes(st.sun) ? `Sun Level は、0 で素の画、100 で ${name} そのまま。${name} は Cinema と一緒には使えません（Cinema をオンにすると外れます）。`
+      : st.cinema ? `Sun Level は、0 で Cinema そのまま、100 で ${name} の色。明るさ・明暗は Cinema のままです。`
       : sc >= 100 ? `Sun Level は、0 で素の画、100 で ${name} そのまま。`
         : `Sun Level は、0 で素の画、${sc} で ${name} そのまま、100 でその ${sunGainOf(core)} 倍。${sc} で軽く止まります。`;
     return [cinemaRow, head, row, this.sunKnob(), h("p", { class: "note" }, note), filmRow];

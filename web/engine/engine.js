@@ -30,6 +30,9 @@ export const isSunMix = (core) => !!(core && core.sunInto);
 //   Cinema オフ   … core = Aftersun の核（sunLevel = 強さ）。どちらもなし（素の画）は core "none"
 // looks.json の Cinema の sunInto は { 足す Aftersun の核: Cinema の明暗でその色にした核 }
 export const SUN_CORES = ["aftersun3", "deepblue", "aqua"];
+// 2026-11-19 単独のルック（Warm）。明暗も露出も自分で持つので、Cinema と一緒には使わない
+// （選ぶと Cinema はオフ。Cinema をオンにすると外れる）。一覧では Aftersun の並びの後ろに出す。Sun Level は 0 で素の画、100 で核そのまま
+export const SOLO_CORES = ["warm"];
 export const NONE_CORE = "none";
 export const sunIntoOf = (core, sun) => {
   const m = core && core.sunInto;
@@ -48,6 +51,7 @@ export function lookState(p) {
 }
 // 画面で選んだ形 → 値。Cinema に足せるのは SUN_CORES だけ（前のルックを選んだまま Cinema をオンにしたら Aftersun にする）
 export function lookParams(cinema, sun, level) {
+  if (SOLO_CORES.includes(sun)) return { core: sun, sun: null, sunLevel: level }; // 単独のルックは Cinema を通さない
   if (cinema) return sun ? { core: "cinema", sun: SUN_CORES.includes(sun) ? sun : SUN_CORES[0], sunLevel: level } : { core: "cinema", sun: null, sunLevel: 0 };
   return sun ? { core: sun, sun: null, sunLevel: level } : { core: NONE_CORE, sun: null, sunLevel: 0 };
 }

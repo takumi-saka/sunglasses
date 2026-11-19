@@ -12,7 +12,7 @@
 //   S・ISO・ピントは、アプリを開き直すと自動に戻す（覚えない）。WB と AF は覚える。
 // 撮った写真は、撮ったときのルック・Sun Level・明るさのまま編集で開く（写真ごとの直しの記録に入れておく）。
 import * as C from "../engine/color.js";
-import { defaultParams, lookParams, sunCoreOf, SUN_CORES } from "../engine/engine.js";
+import { defaultParams, lookParams, sunCoreOf, SOLO_CORES, SUN_CORES } from "../engine/engine.js";
 import * as UT from "../engine/utsurun.js";
 import * as bridge from "./bridge.js";
 import { pref, setEdit } from "./store.js";
@@ -39,7 +39,7 @@ const onOff = (b) => (b ? "オン" : "オフ");
 // 並びは、Cinema → 新しい Aftersun の 3 つ → 前からのルック（一覧に出る順）
 // 2026-11-13 ルックの選び方を「Cinema のオン・オフ」と「足す Aftersun（なし／Aftersun／Blue／Aqua）」に分けた（本人の案）。
 // 前からのルック（Aftersun（前の版）・Aftersun+・Nostalgia）は一覧から外した。輪の Sun Level は、足した Aftersun の強さ
-const FAMILY_NAMES = { cinema: "Cinema", aftersun2: "Aftersun（前の版）", aftersun3: "Aftersun", deepblue: "Aftersun Blue", aqua: "Aftersun Aqua", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
+const FAMILY_NAMES = { cinema: "Cinema", aftersun2: "Aftersun（前の版）", aftersun3: "Aftersun", deepblue: "Aftersun Blue", aqua: "Aftersun Aqua", warm: "Warm", aftersun: "Aftersun+", mine: "Nostalgia" }; // looks.json を読む前に使う控え
 
 // シャッター速度と ISO の 1/3 段の目盛り（端末が出せる範囲だけを使う）。手応えは 1 段ごと
 const S_STOPS = [1 / 8000, 1 / 6400, 1 / 5000, 1 / 4000, 1 / 3200, 1 / 2500, 1 / 2000, 1 / 1600, 1 / 1250, 1 / 1000, 1 / 800, 1 / 640, 1 / 500, 1 / 400, 1 / 320, 1 / 250, 1 / 200, 1 / 160,
@@ -108,7 +108,8 @@ export class Camera {
     // 2026-11-15 カメラの切り替え（サングラス／写ルンです）。写ルンですは、32mm 相当・3:2・ライトが毎回光る。撮る画面にはルックをかけない
     this.film = pref("cameraFilm") === 1;
     this.cinema = pref("cameraCinema") !== 0;
-    this.sun = SUN_CORES.includes(pref("cameraSun")) ? pref("cameraSun") : null;
+    this.sun = [...SUN_CORES, ...SOLO_CORES].includes(pref("cameraSun")) ? pref("cameraSun") : null;
+    if (SOLO_CORES.includes(this.sun)) this.cinema = false;
     this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
     this.build();
     window.addEventListener("sunglasses:camera", (e) => this.onCamera(e.detail));
@@ -200,9 +201,9 @@ export class Camera {
       h("button", { class: "cam-look" + (!this.film ? " is-on" : ""), onClick: () => this.setFilm(false) }, "サングラス"),
       h("button", { class: "cam-look" + (this.film ? " is-on" : ""), onClick: () => this.setFilm(true) }, "写ルンです")];
     const list = h("div", { class: "cam-looks-list" }, ...cams, ...(this.film ? [] : [h("small", {}, "ルック"),
-      h("button", { class: "cam-look" + (this.cinema ? " is-on" : ""), onClick: () => this.setLook(!this.cinema, this.sun, true) }, "Cinema　" + (this.cinema ? "オン" : "オフ")),
-      h("small", {}, "Aftersun を足す"),
-      ...[null, ...SUN_CORES].map((id) => h("button", { class: "cam-look" + (id === this.sun ? " is-on" : ""), onClick: () => this.setLook(this.cinema, id) }, id ? this.familyName(id) : "なし"))]));
+      h("button", { class: "cam-look" + (this.cinema ? " is-on" : ""), onClick: () => this.setLook(!this.cinema, SOLO_CORES.includes(this.sun) ? null : this.sun, true) }, "Cinema　" + (this.cinema ? "オン" : "オフ")),
+      h("small", {}, "Aftersun を足す・Warm に替える"),
+      ...[null, ...SUN_CORES, ...SOLO_CORES].map((id) => h("button", { class: "cam-look" + (id === this.sun ? " is-on" : ""), onClick: () => this.setLook(this.cinema, id) }, id ? this.familyName(id) : "なし"))]));
     el.replaceChildren(list);
     water(list, { kind: "solid", radius: 22, press: false });
     el.hidden = false;
@@ -492,6 +493,7 @@ export class Camera {
   // ---------- ルックと Sun Level ----------
   // 輪の Sun Level は、足した Aftersun の強さ（はじめは 100）。Cinema がオンの時（Cinema に足す量）とオフの時で、値は別々に覚える
   sunKey() {
+    if (SOLO_CORES.includes(this.sun)) return "cameraSunSolo"; // 単独のルック（Warm）の強さは、Aftersun の強さと別に覚える
     return this.cinema ? "cameraSunMix" : "cameraSunLevel";
   }
 
@@ -566,6 +568,7 @@ export class Camera {
   // ルックを替える。Cinema のオン・オフは、続けて Aftersun を選べるよう、一覧を開いたままにする
   async setLook(cinema, sun, keepOpen = false) {
     this.toggleLooks(false);
+    if (SOLO_CORES.includes(sun)) cinema = false; // 単独のルック（Warm）を選んだら Cinema はオフ
     if (cinema === this.cinema && sun === this.sun) return;
     this.cinema = cinema;
     this.sun = sun;
