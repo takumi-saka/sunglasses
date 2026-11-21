@@ -42,8 +42,11 @@ export function deleteMedia(items) {
   real().deleteMedia(JSON.stringify(list));
   return true;
 }
+// 更新時刻は、ミリ秒にそろえる。撮った直後の知らせ（APK）は秒、一覧はミリ秒で来るので、そのままだと同じ写真の名札が食い違い、
+// 撮った時の値（ルック・ピクセルアートなど）が、一覧から開いた時に見つからなかった（2026-11-21）
+export const modifiedMs = (t) => (t > 0 && t < 1e11 ? t * 1000 : t);
 export function keyOf(item) {
-  return item.token ? `opened:${item.name}:${item.size}` : `${item.volume}:${item.id}:${item.dateModified}`;
+  return item.token ? `opened:${item.name}:${item.size}` : `${item.volume}:${item.id}:${modifiedMs(item.dateModified)}`;
 }
 export function mediaUrl(item) {
   if (item.url) return item.url; // ブラウザで選んだファイル（確かめ用）

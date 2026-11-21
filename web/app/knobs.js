@@ -42,7 +42,7 @@ for (const k of Object.values(KNOBS)) {
 // 下の板の並び。「よく使う」は 本人がよく動かすもの（露光量・白み・色温度・彩度・粒）
 export const GROUPS = [
   { id: "core", name: "ルック" },
-  { id: "basic", name: "よく使う", knobs: ["exposure", "bloom", "temp", "saturation", "grain"] },
+  { id: "basic", name: "よく使う", knobs: ["exposure", "bloom", "temp", "saturation", "grain", "pixel", "gameColor"] },
   { id: "light", name: "ライト", knobs: ["exposure", "contrast", "highlights", "shadows", "whites", "blacks"], curve: true },
   { id: "color", name: "カラー", knobs: ["temp", "tint", "vibrance", "saturation"], bw: true },
   { id: "mix", name: "カラーミックス" },

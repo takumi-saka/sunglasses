@@ -555,7 +555,8 @@ export class Camera {
 
   // 撮る画面の画に、ピクセルアートとゲームの色味をかける（窓口 版 8。古い APK では何も起きない）
   sendPixel() {
-    bridge.cameraCall("cameraSetPixel", this.pixel > 0 ? pixelCells(this.pixel) : 0, this.game / 100);
+    // 写ルンですは、写る範囲（3:2）が画面（4:3）より短い辺で 8/9 なので、画面のマスの数をその分だけ増やして、撮った写真と同じ大きさにする
+    bridge.cameraCall("cameraSetPixel", this.pixel > 0 ? pixelCells(this.pixel) * (this.film ? 9 / 8 : 1) : 0, this.game / 100);
   }
 
   sendWeights(w) {
@@ -914,7 +915,7 @@ export class Camera {
     const d = this.opened || {};
     this.evRange = { min: d.evMin || 0, max: d.evMax || 0 };
     this.proRing = null;
-    if (this.openKey) {
+    if (this.openKey && !this.film) {
       this.els.ev.replaceChildren(...this.buildProRing(this.openKey));
     } else {
       const full = this.fullManual();
@@ -922,10 +923,12 @@ export class Camera {
       this.autoBtn = full ? null : autoBtn;
       // 露出と Sun Level は同時に動かさないので、1本の輪にして見出しで切り替える（画を大きくするため）
       const d0 = pref("cameraDial");
-      const dial = ["pixel", "game"].includes(d0) ? d0 : this.sun && d0 === "sun" ? "sun" : "ev"; // Aftersun を足していない時は、Sun Level の輪は出さない
+      // Aftersun を足していない時は、Sun Level の輪は出さない。写ルンですは、露出も Sun Level も決まりの値なので、ドットと色味の輪だけ
+      const film = this.film;
+      const dial = ["pixel", "game"].includes(d0) ? d0 : film ? "pixel" : this.sun && d0 === "sun" ? "sun" : "ev";
       const tabs = (cur) => h("span", { class: "cam-tabs" },
-        h("button", { class: "cam-tab" + (cur === "ev" ? " is-on" : ""), onClick: () => this.setDial("ev") }, "露出"),
-        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), hidden: !this.sun, onClick: () => this.setDial("sun") }, this.sunName()),
+        h("button", { class: "cam-tab" + (cur === "ev" ? " is-on" : ""), hidden: film, onClick: () => this.setDial("ev") }, "露出"),
+        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), hidden: film || !this.sun, onClick: () => this.setDial("sun") }, this.sunName()),
         h("button", { class: "cam-tab" + (cur === "pixel" ? " is-on" : ""), onClick: () => this.setDial("pixel") }, "ドット"),
         h("button", { class: "cam-tab" + (cur === "game" ? " is-on" : ""), onClick: () => this.setDial("game") }, "色味"));
       const evStops = [];
@@ -1227,7 +1230,7 @@ export class Camera {
         if (all[this.cam.id] !== t.meta.aperture) pref("cameraAperture", { ...all, [this.cam.id]: t.meta.aperture });
       }
       const cv = document.createElement("canvas");
-      this.engine.renderThumb(t, look, cv);
+      this.engine.renderThumb(t, look, cv, null, params);
       shot.url = cv.toDataURL("image/jpeg", 0.85);
       this.els.thumb.style.backgroundImage = `url(${shot.url})`;
       this.els.thumb.classList.add("is-on");

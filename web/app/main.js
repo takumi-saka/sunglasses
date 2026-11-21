@@ -4,7 +4,7 @@ import * as bridge from "./bridge.js";
 import { Camera } from "./camera.js";
 import { Editor } from "./editor.js";
 import { Library } from "./library.js";
-import { pref } from "./store.js";
+import { pref, migrateKeys } from "./store.js";
 import { closeSheet, h, toast } from "./ui.js";
 
 const META = document.querySelector('meta[name="sg-version"]').content;
@@ -107,6 +107,7 @@ async function boot() {
     if (list.length) openItem(list[0], null);
   });
 
+  await migrateKeys();
   await library.refresh();
   if (bridge.takeLaunch() === "camera") showCamera();
   const opened = bridge.takeOpened();

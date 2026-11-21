@@ -364,12 +364,12 @@ await page.click("#cam-shutter");
 await page.waitForTimeout(900);
 log.拡大.撮った写真の切り抜き = await page.evaluate(async () => {
   const { getEdit } = await import("/app/store.js");
-  const e = await getEdit("external_primary:77:1");
+  const e = await getEdit("external_primary:77:1000");
   return e && e.params && e.params.crop;
 });
 log.ピクセルアート.撮った写真の値 = await page.evaluate(async () => {
   const { getEdit } = await import("/app/store.js");
-  const e = await getEdit("external_primary:77:1");
+  const e = await getEdit("external_primary:77:1000");
   return e && e.params && [e.params.pixel, e.params.gameColor];
 });
 // 望遠の札（開けないレンズ）をたたく → 元のレンズに戻り、札が消える

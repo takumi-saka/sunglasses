@@ -485,7 +485,8 @@ export class Editor {
     if (g.id === "core") body.push(...this.corePanel());
     if (g.id === "basic") body.push(...[this.sunKnob()].filter(Boolean)); // よく使うの一番上に、足した Aftersun の強さ（足していない時は出さない）
     // 写ルンですの現像で効くのは、プリントの明るさ（露光量のつまみ）だけ
-    if (film && g.id === "basic") body.push(this.knob("exposure", { label: "プリントの明るさ" }), h("p", { class: "note" }, "写真屋がプリントを明るく・暗く焼く量です。色や明暗のつまみは、写ルンですの現像では使いません。"));
+    if (film && g.id === "basic") body.push(this.knob("exposure", { label: "プリントの明るさ" }), h("p", { class: "note" }, "写真屋がプリントを明るく・暗く焼く量です。色や明暗のつまみは、写ルンですの現像では使いません。"),
+      this.knob("pixel"), this.knob("gameColor")); // ピクセルアートは、写ルンですの現像のあとにかかる（2026-11-21）
     else if (g.knobs) body.push(...g.knobs.map((k) => this.knob(k)));
     if (g.curve) body.push(...this.curvePanel());
     if (g.bw) {

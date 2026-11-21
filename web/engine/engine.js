@@ -837,7 +837,16 @@ export class Engine {
   // look は { core, sunLevel }（核の名前だけを渡すと Sun Level 100）
   // params（編集したつまみの値の全部）を渡すと、色と明るさのつまみ・白黒もかける（2026-11-13。一覧の画が編集前のままだった）。
   // 切り抜き・粒・にじみなどは、小さな画ではかけない
-  renderThumb(t, look, canvas, params = null) {
+  // fx（つまみの値）を渡すと、ピクセルアートとゲームの色味もかける（2026-11-21。撮った直後と一覧の画で、ドットが消えて見えた）
+  _thumbFx(fx, w, h) {
+    const pixel = C.clamp((fx && fx.pixel) || 0, 0, 100), game = C.clamp((fx && fx.gameColor) || 0, 0, 200) / 100;
+    if (!(pixel > 0)) return { uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: game };
+    // 小さな画は切り抜く前の全体なので、マスの大きさは、切り抜いたあとの短い辺に合わせる
+    const c = (fx && fx.crop) || {}, side = Math.max(1, Math.min(w * (c.w || 1), h * (c.h || 1)) / pixelCells(pixel));
+    return { uCells: [w / side, h / side], uRegion: [0, 0, 1, 1], uGame: game };
+  }
+
+  renderThumb(t, look, canvas, params = null, fx = params) {
     const uts = (typeof look === "string" ? look : look.core) === UT.UTSURUN_CORE;
     const lk = uts ? null : this.lookFor(typeof look === "string" ? { core: look === "weak" ? "aftersun" : look, sunLevel: look === "weak" ? 50 : 100 } : look);
     const gl = this.gl, w = t.tw, h = t.th, used = [];
@@ -857,7 +866,7 @@ export class Engine {
       const st = UT.frameStats(small, 160, Math.round(small.length / 480), I3, toRgb, k, w / h, params ? params.exposure || 0 : 0, UT.rules(flash, lifted));
       const r = this._utsDraw(up, I3, { toRgb, k, ...st }, w, h, 0, 0, w, h, { grain: false });
       const out = this._rt(w, h, true);
-      this._pass("final", out, { uRgb: r.rgb, uGlow: r.rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0, uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: 0 });
+      this._pass("final", out, { uRgb: r.rgb, uGlow: r.rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0, ...this._thumbFx(fx, w, h) });
       const px = new Uint8ClampedArray(w * h * 4);
       gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
       this._release([r.rgb, out]);
@@ -878,7 +887,7 @@ export class Engine {
       uGainN: gainN, uKnobs: params ? 1 : 0, ...this._knobUniforms(params || this.params),
     });
     this._pass("finish", rgb, { uLab: lab, uNoise: lab, uGrainOn: 0, uGrainAmp: 0, uVignette: 0, uToCrop: I3 });
-    this._pass("final", out, { uRgb: rgb, uGlow: rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0, uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: 0 });
+    this._pass("final", out, { uRgb: rgb, uGlow: rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0, ...this._thumbFx(fx, w, h) });
     const px = new Uint8ClampedArray(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
     this._release(used);
