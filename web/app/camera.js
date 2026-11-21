@@ -12,7 +12,7 @@
 //   S・ISO・ピントは、アプリを開き直すと自動に戻す（覚えない）。WB と AF は覚える。
 // 撮った写真は、撮ったときのルック・Sun Level・明るさのまま編集で開く（写真ごとの直しの記録に入れておく）。
 import * as C from "../engine/color.js";
-import { defaultParams, lookParams, pixelCells, sunCoreOf, SOLO_CORES, SUN_CORES } from "../engine/engine.js";
+import { defaultParams, lookParams, sunCoreOf, SOLO_CORES, SUN_CORES } from "../engine/engine.js";
 import * as UT from "../engine/utsurun.js";
 import * as bridge from "./bridge.js";
 import { pref, setEdit } from "./store.js";
@@ -111,9 +111,6 @@ export class Camera {
     this.sun = [...SUN_CORES, ...SOLO_CORES].includes(pref("cameraSun")) ? pref("cameraSun") : null;
     if (SOLO_CORES.includes(this.sun)) this.cinema = false;
     this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
-    // 2026-11-21 ピクセルアート（ドットの大きさ 0〜100。0 で無し）とゲームの色味（0〜200）。撮った写真の編集の値にそのまま入る
-    this.pixel = pref("cameraPixel") || 0;
-    this.game = pref("cameraGame") || 0;
     this.build();
     window.addEventListener("sunglasses:camera", (e) => this.onCamera(e.detail));
     window.addEventListener("sunglasses:camera-sample", (e) => this.onSample(e.detail));
@@ -536,6 +533,8 @@ export class Camera {
 
   // 撮る画面の画にルックをかけるための、色の対応表（2 つまで）と曲線を APK へ渡す
   async sendLook() {
+    // 撮る画面にはピクセルアートをかけない（重いので、あとから編集で付ける。2026-11-21）。前に入れた値が APK に残らないように、毎回 0 を知らせる
+    if (bridge.bridgeVersion() >= bridge.PIXEL_BRIDGE) bridge.cameraCall("cameraSetPixel", 0, 0);
     const lk = this.look();
     const m = this.engine.ap0ToAp1, s = this.engine.srgbToAp0, M = new Array(9);
     for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) M[r * 3 + c] = m[r * 3] * s[c] + m[r * 3 + 1] * s[3 + c] + m[r * 3 + 2] * s[6 + c];
@@ -550,13 +549,6 @@ export class Camera {
       const core = lk.B || lk.A;
       bridge.cameraCall("cameraSetLook", await this.lutBase64(core), core.size, JSON.stringify([...core.lo, ...core.hi]));
     }
-    this.sendPixel();
-  }
-
-  // 撮る画面の画に、ピクセルアートとゲームの色味をかける（窓口 版 8。古い APK では何も起きない）
-  sendPixel() {
-    // 写ルンですは、写る範囲（3:2）が画面（4:3）より短い辺で 8/9 なので、画面のマスの数をその分だけ増やして、撮った写真と同じ大きさにする
-    bridge.cameraCall("cameraSetPixel", this.pixel > 0 ? pixelCells(this.pixel) * (this.film ? 9 / 8 : 1) : 0, this.game / 100);
   }
 
   sendWeights(w) {
@@ -586,9 +578,6 @@ export class Camera {
     pref("cameraSun", sun || "");
     if (keepOpen) this.toggleLooks(true);
     this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
-    // 2026-11-21 ピクセルアート（ドットの大きさ 0〜100。0 で無し）とゲームの色味（0〜200）。撮った写真の編集の値にそのまま入る
-    this.pixel = pref("cameraPixel") || 0;
-    this.game = pref("cameraGame") || 0;
     bridge.haptic("tick");
     this.renderSettings();
     this.bubble("ルック", this.els.coreBtn.querySelector("b").textContent, 1100);
@@ -915,22 +904,17 @@ export class Camera {
     const d = this.opened || {};
     this.evRange = { min: d.evMin || 0, max: d.evMax || 0 };
     this.proRing = null;
-    if (this.openKey && !this.film) {
+    if (this.openKey) {
       this.els.ev.replaceChildren(...this.buildProRing(this.openKey));
     } else {
       const full = this.fullManual();
       const autoBtn = full ? h("span", { class: "cam-meter" }, "露出計") : h("button", { class: "cam-auto" + (this.expo.auto ? " is-on" : ""), onClick: () => this.setAuto() }, "自動");
       this.autoBtn = full ? null : autoBtn;
       // 露出と Sun Level は同時に動かさないので、1本の輪にして見出しで切り替える（画を大きくするため）
-      const d0 = pref("cameraDial");
-      // Aftersun を足していない時は、Sun Level の輪は出さない。写ルンですは、露出も Sun Level も決まりの値なので、ドットと色味の輪だけ
-      const film = this.film;
-      const dial = ["pixel", "game"].includes(d0) ? d0 : film ? "pixel" : this.sun && d0 === "sun" ? "sun" : "ev";
+      const dial = this.sun && pref("cameraDial") === "sun" ? "sun" : "ev"; // Aftersun を足していない時は、Sun Level の輪は出さない
       const tabs = (cur) => h("span", { class: "cam-tabs" },
-        h("button", { class: "cam-tab" + (cur === "ev" ? " is-on" : ""), hidden: film, onClick: () => this.setDial("ev") }, "露出"),
-        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), hidden: film || !this.sun, onClick: () => this.setDial("sun") }, this.sunName()),
-        h("button", { class: "cam-tab" + (cur === "pixel" ? " is-on" : ""), onClick: () => this.setDial("pixel") }, "ドット"),
-        h("button", { class: "cam-tab" + (cur === "game" ? " is-on" : ""), onClick: () => this.setDial("game") }, "色味"));
+        h("button", { class: "cam-tab" + (cur === "ev" ? " is-on" : ""), onClick: () => this.setDial("ev") }, "露出"),
+        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), hidden: !this.sun, onClick: () => this.setDial("sun") }, this.sunName()));
       const evStops = [];
       for (let k = -9; k <= 9; k++) evStops.push({ v: k / 3, mark: k % 3 ? "minor" : "major", label: k % 3 ? null : (k > 0 ? "+" : k < 0 ? "−" : "") + Math.abs(k / 3), gap: 17 });
       this.evStops = evStops;
@@ -964,36 +948,12 @@ export class Camera {
           this.sendWeights();
         },
       });
-      // 2026-11-21 ピクセルアートの輪 2 本（ドットの大きさ 0〜100、ゲームの色味 0〜200 を 2 刻み）。値は編集の「効果」のつまみと同じ
-      const old = bridge.bridgeVersion() > 0 && bridge.bridgeVersion() < bridge.PIXEL_BRIDGE; // 古い APK: 撮る画面には出ない（撮った写真には効く）
-      const fxRing = (key, name, prefKey, max, step) => {
-        const stops = [];
-        for (let v = 0; v <= max; v += step) stops.push({ v, mark: v % (max / 2) === 0 ? "major" : v % (max / 10) === 0 ? "minor" : null, label: v % (max / 2) === 0 ? String(v) : null, gap: 3.4 });
-        const set = (v) => {
-          this[key] = v;
-          pref(prefKey, v);
-          this.sendPixel();
-        };
-        const r = ring({
-          label: "", extra: h("span", { class: "cam-dial-extra" }, tabs(key)), stops, index: Math.round(this[key] / step), fmt: (v) => String(v),
-          onInput: (v) => {
-            set(v);
-            this.bubble(name, old ? v + "（撮った写真に効きます）" : String(v), old ? 1600 : 700);
-          },
-          onReset: () => {
-            set(0);
-            r.set(0);
-          },
-        });
-        r.el.setAttribute("aria-label", name);
-        return r;
-      };
-      const px = fxRing("pixel", "ドットの大きさ", "cameraPixel", 100, 1), gm = fxRing("game", "ゲームの色味", "cameraGame", 200, 2);
       this.evRing.el.setAttribute("aria-label", "露出");
       lv.el.setAttribute("aria-label", this.sunName());
-      this.dialEls = { ev: this.evRing.el, sun: lv.el, pixel: px.el, game: gm.el };
-      for (const [k, el] of Object.entries(this.dialEls)) el.hidden = k !== dial;
-      const kids = [this.evRing.el, lv.el, px.el, gm.el];
+      this.evRing.el.hidden = dial !== "ev";
+      lv.el.hidden = dial !== "sun";
+      this.dialEls = { ev: this.evRing.el, sun: lv.el };
+      const kids = [this.evRing.el, lv.el];
       if (!this.v3) kids.push(h("p", { class: "cam-note" }, "撮る画面で Sun Level を見るには、アプリの入れ直しが必要です（撮った写真には効きます）"));
       this.els.ev.replaceChildren(...kids);
     }
@@ -1006,7 +966,8 @@ export class Camera {
   setDial(k) {
     if (!this.dialEls || this.dialEls[k].hidden === false) return;
     pref("cameraDial", k);
-    for (const [n, el] of Object.entries(this.dialEls)) el.hidden = n !== k;
+    this.dialEls.ev.hidden = k !== "ev";
+    this.dialEls.sun.hidden = k !== "sun";
     bridge.haptic("tick");
   }
 
@@ -1215,7 +1176,7 @@ export class Camera {
       return;
     }
     const item = d.item, look = this.pendingLook || { ...this.lookP(), exposure: 0 };
-    const params = { ...defaultParams(), ...look, pixel: this.pixel, gameColor: this.game };
+    const params = { ...defaultParams(), ...look };
     await setEdit(bridge.keyOf(item), { params, shot: true });
     const shot = { item, url: null };
     this.shots.unshift(shot);
@@ -1230,7 +1191,7 @@ export class Camera {
         if (all[this.cam.id] !== t.meta.aperture) pref("cameraAperture", { ...all, [this.cam.id]: t.meta.aperture });
       }
       const cv = document.createElement("canvas");
-      this.engine.renderThumb(t, look, cv, null, params);
+      this.engine.renderThumb(t, look, cv);
       shot.url = cv.toDataURL("image/jpeg", 0.85);
       this.els.thumb.style.backgroundImage = `url(${shot.url})`;
       this.els.thumb.classList.add("is-on");

@@ -58,7 +58,6 @@ await ctx.addInitScript(() => {
     },
     cameraSetLookParams: () => rec("params"), cameraSetLookSlot: (s) => rec("slot", s), cameraSetLook: () => rec("look1"),
     cameraSetWeights: (n, a, b) => rec("w", +n.toFixed(2), +a.toFixed(2), +b.toFixed(2)),
-    cameraSetPixel: (n, g) => rec("pixel", n, +g.toFixed(2)),
     cameraSetGains: (a, b) => rec("g", +a.toFixed(3), +b.toFixed(3)), cameraSetGain: (g) => rec("g1", g),
     cameraSetLookOn: (on) => rec("lookOn", on), cameraSetZebra: (on) => rec("zebra", on), cameraSetEv: (v) => rec("ev", +v.toFixed(2)),
     cameraFocus: (...a) => rec("focus", ...a.map((v) => (typeof v === "number" ? +v.toFixed(3) : v))), cameraUnlock: () => rec("unlock"),
@@ -170,17 +169,6 @@ await clear();
 await drag("#cam-ev .rg", 1, 120);
 log.SunLevel = { 値: await val(1), 最後の重み: (await calls("w")).slice(-1) };
 await shot("c2_露出とSunLevel");
-// 2026-11-21 ピクセルアートの輪 2 本（ドットの大きさ・ゲームの色味）。動かすたびに APK へ知らせ、撮った写真の値にも入る
-await page.locator(".cam-tab:visible", { hasText: "ドット" }).click();
-await page.waitForTimeout(200);
-await drag("#cam-ev .rg", 2, -120);
-await page.locator(".cam-tab:visible", { hasText: "色味" }).click();
-await page.waitForTimeout(200);
-await drag("#cam-ev .rg", 3, -120);
-log.ピクセルアート = { ドット: await val(2), 色味: await val(3), 最後の知らせ: (await calls("pixel")).slice(-1) };
-await shot("c2b_ピクセルアート");
-await page.locator(".cam-tab:visible", { hasText: "Sun Level" }).click();
-await page.waitForTimeout(200);
 
 // 3. たたいた所の明るさ: 左（暗い所）をたたくと、自動の露出が明るい向きに動く
 await page.evaluate(() => (window.__sceneLevel = 110));
@@ -220,7 +208,7 @@ await page.waitForTimeout(1200);
 log.両方手で決めて撮った記録 = await page.evaluate(() => new Promise((resolve) => {
   const r = indexedDB.open("sunglasses", 1);
   r.onsuccess = () => {
-    const g = r.result.transaction("edits").objectStore("edits").get("external_primary:77:1");
+    const g = r.result.transaction("edits").objectStore("edits").get("external_primary:77:1000");
     g.onsuccess = () => resolve(g.result ? g.result.params.exposure : null);
   };
 }));
@@ -248,7 +236,7 @@ await page.waitForTimeout(1200);
 log.撮った写真の記録 = await page.evaluate(() => new Promise((resolve) => {
   const r = indexedDB.open("sunglasses", 1);
   r.onsuccess = () => {
-    const g = r.result.transaction("edits").objectStore("edits").get("external_primary:77:1");
+    const g = r.result.transaction("edits").objectStore("edits").get("external_primary:77:1000");
     g.onsuccess = () => resolve(g.result ? { core: g.result.params.core, sunLevel: g.result.params.sunLevel, exposure: g.result.params.exposure } : null);
   };
 }));
@@ -366,11 +354,6 @@ log.拡大.撮った写真の切り抜き = await page.evaluate(async () => {
   const { getEdit } = await import("/app/store.js");
   const e = await getEdit("external_primary:77:1000");
   return e && e.params && e.params.crop;
-});
-log.ピクセルアート.撮った写真の値 = await page.evaluate(async () => {
-  const { getEdit } = await import("/app/store.js");
-  const e = await getEdit("external_primary:77:1000");
-  return e && e.params && [e.params.pixel, e.params.gameColor];
 });
 // 望遠の札（開けないレンズ）をたたく → 元のレンズに戻り、札が消える
 await page.locator("#cam-lenses .chip", { hasText: "100mm" }).click();
