@@ -398,11 +398,68 @@ uniform float uWarm;
 uniform mat3 uXf;
 uniform int uBw;
 uniform int uClip;
+// 2026-11-21 ピクセルアート（ドットの大きさ）とゲームの色味。
+// uCells = 画の全体に並ぶマスの数（横・縦。0 で無し）、uRegion = いま描いている部分が画の全体のどこか（左上 x,y・幅・高さ。0〜1）。
+// マスの色は、マスの真ん中の 1/3 だけを拾う（縁をぼかさない、硬い出方）。
+// uGame = ゲームの色味（0〜2。1.0 が PS1 の画面 672 枚の実測どおり）。明暗（黒を落とす）と色の濃さ（うすい色ほど大きく濃く）を Oklab で動かす。
+// 表の数字のもとは、パソコンの道具 game_color.py の TONE・CHR・CHR_W
+uniform vec2 uCells;
+uniform vec4 uRegion;
+uniform float uGame;
+const float GT_X[9] = float[9](0.0, 0.10, 0.17, 0.22, 0.41, 0.54, 0.65, 0.89, 1.0);
+const float GT_Y[9] = float[9](0.0, 0.0, 0.03, 0.08, 0.29, 0.45, 0.62, 0.86, 1.0);
+const float GC_X[9] = float[9](0.0, 0.01, 0.025, 0.05, 0.09, 0.11, 0.15, 0.25, 0.4);
+const float GC_Y[9] = float[9](0.0, 0.017, 0.048, 0.09, 0.135, 0.165, 0.21, 0.29, 0.4);
+float ip9(float x, float xs[9], float ys[9]) {
+  if (x <= xs[0]) return ys[0];
+  for (int i = 1; i < 9; i++) if (x <= xs[i]) return mix(ys[i - 1], ys[i], (x - xs[i - 1]) / (xs[i] - xs[i - 1]));
+  return ys[8];
+}
+vec3 okLin(float L, float a, float b) {
+  float l = L + 0.3963377774 * a + 0.2158037573 * b, m = L - 0.1055613458 * a - 0.0638541728 * b, s = L - 0.0894841775 * a - 1.2914855480 * b;
+  l = l * l * l; m = m * m * m; s = s * s * s;
+  return vec3(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
+}
+bool okIn(vec3 r) { return all(greaterThanEqual(r, vec3(-1e-4))) && all(lessThanEqual(r, vec3(1.0001))); }
+vec3 gameColor(vec3 c, float s) {
+  vec3 q = s2l(c);
+  float l = pow(0.4122214708 * q.r + 0.5363325363 * q.g + 0.0514459929 * q.b, 1.0 / 3.0);
+  float m = pow(0.2119034982 * q.r + 0.6806995451 * q.g + 0.1073969566 * q.b, 1.0 / 3.0);
+  float t = pow(0.0883024619 * q.r + 0.2817188376 * q.g + 0.6299787005 * q.b, 1.0 / 3.0);
+  float L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * t;
+  float a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * t;
+  float b = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * t;
+  L = clamp(L + s * (ip9(L, GT_X, GT_Y) - L), 0.0, 1.0);
+  float ch = length(vec2(a, b));
+  if (ch > 1e-6) {
+    float w = L < 0.1 ? mix(0.2, 0.3, L / 0.1) : (L < 0.3 ? mix(0.3, 1.0, (L - 0.1) / 0.2) : 1.0);
+    float k = max(ch + s * w * (ip9(ch, GC_X, GC_Y) - ch), 0.0) / ch;
+    a *= k; b *= k;
+  }
+  vec3 r = okLin(L, a, b);
+  if (!okIn(r)) {
+    // 画面に出せない濃さは、明るさと色相を変えずに、出せる所まで濃さだけ下げる
+    float lo = 0.0, hi = 1.0;
+    for (int i = 0; i < 10; i++) { float h = 0.5 * (lo + hi); if (okIn(okLin(L, a * h, b * h))) lo = h; else hi = h; }
+    r = okLin(L, a * lo, b * lo);
+  }
+  return clamp(l2s(clamp(r, 0.0, 1.0)), 0.0, 1.0);
+}
 void main() {
   vec2 uv = (uXf * vec3(vUv, 1.0)).xy;
-  vec3 c = texture(uRgb, uv).rgb;
+  vec3 c;
+  if (uCells.x > 0.0) {
+    vec2 g = uRegion.xy + uv * uRegion.zw;
+    vec2 cell = (floor(g * uCells) + 0.5) / uCells;
+    vec2 d = 1.0 / (9.0 * uCells * uRegion.zw);
+    uv = clamp((cell - uRegion.xy) / uRegion.zw, 0.0, 1.0);
+    c = vec3(0.0);
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) c += texture(uRgb, clamp(uv + vec2(float(i), float(j)) * d, 0.0, 1.0)).rgb;
+    c /= 9.0;
+  } else c = texture(uRgb, uv).rgb;
   if (uBloomOn == 1) c += texture(uGlow, uv).r * uBloom * vec3(1.0, 1.0 - 0.03 * uWarm, 1.0 - 0.10 * uWarm);
   c = clamp(c, 0.0, 1.0);
+  if (uGame > 0.0) c = gameColor(c, uGame);
   if (uBw == 1) c = lab2rgb(vec3(rgb2lab(c).x, 0.0, 0.0));
   if (uClip == 1) {
     if (max(c.r, max(c.g, c.b)) >= 0.996) c = vec3(1.0, 0.25, 0.2);

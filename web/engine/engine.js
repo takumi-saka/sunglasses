@@ -72,6 +72,10 @@ export const knobAmount = (base, ref, k) => Math.max(0, k <= 0 ? base * (1 + k /
 // 結び目の間は直線でつなぎ、両端の外は端の値のまま。シェーダーには明るさ 0〜1 を 32 等分した 33 点の表で渡す。
 // 書いていない核は今までの式 clamp(1.15 − l^1.5, 0.2, 1)（暗いほど強く、明るい所にも 0.2 残る）。
 // Aftersun の粒は中間で一定、明るい所と真っ暗な所で消えるので（調査12 の E の 4-1）、核ごとに形を持てるようにした
+// 2026-11-21 ピクセルアートのつまみ（1〜100）→ 画の短い辺に並ぶマスの数（360〜24）
+export function pixelCells(v) {
+  return Math.round(360 * Math.pow(24 / 360, C.clamp(v, 0, 100) / 100));
+}
 export const GRAIN_LUT_N = 33;
 export function grainCurveTable(knots) {
   const t = new Float32Array(GRAIN_LUT_N);
@@ -105,6 +109,7 @@ export function defaultParams() {
     grading: { shadows: zone(), midtones: zone(), highlights: zone(), global: zone(), balance: 0 },
     texture: 0, clarity: 0, dehaze: 0, vignette: 0,
     grain: 0, grainSize: 0, halation: 0, bloom: 0, soften: 0,
+    pixel: 0, gameColor: 0, // 2026-11-21 ピクセルアート（ドットの大きさ。0 で無し）とゲームの色味（0〜200）
     sharpen: 0, noise: 0, colorNoise: 0,
     bw: false,
     flash: false, // フラッシュをたいて撮った写真か（写ルンですの現像で、白と明るさの決め方が変わる）
@@ -477,6 +482,7 @@ export class Engine {
     const bx0 = Math.max(0, l.x0 - m), by0 = Math.max(0, l.y0 - m);
     const bw = Math.min(l.VW, l.x0 + l.rw + m) - bx0, bh = Math.min(l.VH, l.y0 + l.rh + m) - by0;
     const r = this._renderRegion(l.VW, l.VH, bx0, by0, bw, bh, { compare: this.compare });
+    r.reg = { VW: l.VW, VH: l.VH, x0: bx0, y0: by0, bw, bh };
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 1);
@@ -491,11 +497,21 @@ export class Engine {
     this._release(r.used);
   }
 
+  // 2026-11-21 ピクセルアートとゲームの色味（shaders.js の FS_FINAL）。reg = いま描いた部分（_renderRegion に渡した VW, VH, x0, y0, bw, bh）。
+  // マスの数は画の短い辺で決める: つまみ 1〜100 で 360 マス（細かい）〜24 マス（大きい）。マスは正方形。押して元の画を見ている間は外す
+  _pixelUniforms(reg) {
+    const p = this.params, off = this.compare || !reg;
+    const pixel = off ? 0 : C.clamp(p.pixel || 0, 0, 100), game = off ? 0 : C.clamp(p.gameColor || 0, 0, 200) / 100;
+    if (!(pixel > 0)) return { uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: game };
+    const n = pixelCells(pixel), side = Math.min(reg.VW, reg.VH) / n;
+    return { uCells: [reg.VW / side, reg.VH / side], uRegion: [reg.x0 / reg.VW, reg.y0 / reg.VH, reg.bw / reg.VW, reg.bh / reg.VH], uGame: game };
+  }
+
   _final(r, target, xf, clip) {
     const p = this.params;
     this._pass("final", target, {
       uRgb: r.rgb, uGlow: r.glow || r.rgb, uBloomOn: r.glow ? 1 : 0, uBloom: r.bloom, uWarm: r.warm, uXf: xf,
-      uBw: p.bw && !this.compare ? 1 : 0, uClip: clip ? 1 : 0,
+      uBw: p.bw && !this.compare ? 1 : 0, uClip: clip ? 1 : 0, ...this._pixelUniforms(r.reg),
     });
   }
 
@@ -790,6 +806,7 @@ export class Engine {
       VH = Math.round(VH * s);
     }
     const r = this._renderRegion(VW, VH, 0, 0, VW, VH, {});
+    r.reg = { VW, VH, x0: 0, y0: 0, bw: VW, bh: VH };
     const t = this._rt(VW, VH, true);
     this._final(r, t, I3, false);
     const px = new Uint8ClampedArray(VW * VH * 4);
@@ -806,6 +823,7 @@ export class Engine {
     const gl = this.gl, c = this._cropPx();
     const VW = width || Math.round(c.w), VH = Math.round((VW * c.h) / c.w);
     const r = this._renderRegion(VW, VH, 0, 0, VW, VH, { compare });
+    r.reg = { VW, VH, x0: 0, y0: 0, bw: VW, bh: VH };
     const t = this._rt(VW, VH, true);
     this._final(r, t, I3, false);
     const px = new Uint8Array(VW * VH * 4);
@@ -839,7 +857,7 @@ export class Engine {
       const st = UT.frameStats(small, 160, Math.round(small.length / 480), I3, toRgb, k, w / h, params ? params.exposure || 0 : 0, UT.rules(flash, lifted));
       const r = this._utsDraw(up, I3, { toRgb, k, ...st }, w, h, 0, 0, w, h, { grain: false });
       const out = this._rt(w, h, true);
-      this._pass("final", out, { uRgb: r.rgb, uGlow: r.rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0 });
+      this._pass("final", out, { uRgb: r.rgb, uGlow: r.rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0, uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: 0 });
       const px = new Uint8ClampedArray(w * h * 4);
       gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
       this._release([r.rgb, out]);
@@ -860,7 +878,7 @@ export class Engine {
       uGainN: gainN, uKnobs: params ? 1 : 0, ...this._knobUniforms(params || this.params),
     });
     this._pass("finish", rgb, { uLab: lab, uNoise: lab, uGrainOn: 0, uGrainAmp: 0, uVignette: 0, uToCrop: I3 });
-    this._pass("final", out, { uRgb: rgb, uGlow: rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0 });
+    this._pass("final", out, { uRgb: rgb, uGlow: rgb, uBloomOn: 0, uBloom: 0, uWarm: 0, uXf: I3, uBw: params && params.bw ? 1 : 0, uClip: 0, uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: 0 });
     const px = new Uint8ClampedArray(w * h * 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
     this._release(used);

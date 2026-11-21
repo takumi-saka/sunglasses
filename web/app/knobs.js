@@ -23,6 +23,9 @@ export const KNOBS = {
   halation: { label: "ハレーション", min: -100, max: 200 },
   bloom: { label: "白み", min: -100, max: 200 },
   soften: { label: "やわらかさ", min: -100, max: 200 },
+  // 2026-11-21 ピクセルアート: ドットの大きさ（0 で無し。大きいほど粗い）と、ゲームの色味（100 が PS1 の画面の実測どおり）
+  pixel: { label: "ドットの大きさ", min: 0, max: 100, fmt: (v) => String(Math.round(v)) },
+  gameColor: { label: "ゲームの色味", min: 0, max: 200, fmt: (v) => String(Math.round(v)) },
   sharpen: { label: "シャープ", min: 0, max: 150 },
   noise: { label: "ノイズ軽減", min: 0, max: 100 },
   colorNoise: { label: "カラーノイズ軽減", min: 0, max: 100 },
@@ -44,7 +47,7 @@ export const GROUPS = [
   { id: "color", name: "カラー", knobs: ["temp", "tint", "vibrance", "saturation"], bw: true },
   { id: "mix", name: "カラーミックス" },
   { id: "grade", name: "グレーディング" },
-  { id: "effect", name: "効果", knobs: ["texture", "clarity", "dehaze", "vignette", "grain", "grainSize", "halation", "bloom", "soften"] },
+  { id: "effect", name: "効果", knobs: ["texture", "clarity", "dehaze", "vignette", "grain", "grainSize", "halation", "bloom", "soften", "pixel", "gameColor"] },
   { id: "detail", name: "ディテール", knobs: ["sharpen", "noise", "colorNoise"] },
   { id: "crop", name: "切り抜き" },
 ];
