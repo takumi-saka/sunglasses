@@ -101,17 +101,23 @@ async function boot() {
       navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
     }
   });
+  // 「読み込み」やほかのアプリから渡された写真: 全部を一覧のいちばん上に並べる。1 枚ならそのまま編集で開く（2026-11-21。前は 1 枚目だけ開いて残りを捨てていた）
+  const takeOpened = async () => {
+    const list = bridge.takeOpened();
+    if (!list.length) return;
+    await library.addImported(list);
+    if (list.length === 1) openItem(list[0], null);
+    else toast(`${list.length}枚を読み込みました`);
+  };
   window.addEventListener("sunglasses:permission", () => library.refresh());
   window.addEventListener("sunglasses:opened", () => {
-    const list = bridge.takeOpened();
-    if (list.length) openItem(list[0], null);
+    takeOpened();
   });
 
   await migrateKeys();
   await library.refresh();
   if (bridge.takeLaunch() === "camera") showCamera();
-  const opened = bridge.takeOpened();
-  if (opened.length) openItem(opened[0], null);
+  takeOpened();
   if (pref("updated") && pref("updated") !== VERSION) toast(`新しい版（${VERSION}）にしました`);
   pref("updated", VERSION);
 

@@ -21,6 +21,8 @@ export class Library {
     this.banner = document.getElementById("lib-banner");
     this.count = document.getElementById("lib-count");
     this.urls = new Map();
+    // 「読み込み」やほかのアプリから渡された写真（一覧のいちばん上に並べる。アプリを閉じるまで。2026-11-21）
+    this.imported = [];
     this.queue = [];
     this.busy = false;
     document.getElementById("lib-open").onclick = () => this.openFile();
@@ -68,6 +70,14 @@ export class Library {
     input.click();
   }
 
+  // 読み込んだ写真を一覧に足す（同じ写真をもう一度選んだら、新しい方に入れ替える）
+  async addImported(list) {
+    const keys = new Set(list.map((it) => bridge.keyOf(it)));
+    this.imported = [...list, ...this.imported.filter((it) => !keys.has(bridge.keyOf(it)))];
+    await this.refresh();
+    this.list.scrollTop = 0;
+  }
+
   async refresh() {
     const perm = bridge.permission();
     this.renderBanner(perm);
@@ -85,6 +95,10 @@ export class Library {
     }
     const frag = [];
     const num = (v) => h("span", { class: "num" }, String(v));
+    if (this.imported.length) {
+      frag.push(h("h3", { class: "day" }, h("span", { class: "day-date" }, "読み込んだ写真"), h("span", { class: "day-n" }, num(this.imported.length), "枚")));
+      frag.push(h("div", { class: "grid" }, this.imported.map((it) => this.tile(it))));
+    }
     for (const { d, arr } of groups.values()) {
       // 日付の見出し: 2024年8月3日 土曜日 と、その日の枚数
       frag.push(h("h3", { class: "day" },
@@ -93,7 +107,7 @@ export class Library {
         h("span", { class: "day-n" }, num(arr.length), "枚")));
       frag.push(h("div", { class: "grid" }, arr.map((it) => this.tile(it))));
     }
-    if (!items.length && perm !== "none") {
+    if (!items.length && !this.imported.length && perm !== "none") {
       frag.push(h("div", { class: "empty" }, h("p", {}, "RAW（DNG）の写真が見つかりませんでした。"),
         h("p", { class: "note" }, "純正カメラのプロモードで RAW をオンにして撮ると、ここに新しい順に並びます。")));
     }
@@ -125,14 +139,14 @@ export class Library {
   tile(it) {
     const key = bridge.keyOf(it);
     // まずスマホの小さな画（核なし）をすぐ出し、RAW から核をかけた画ができたら差し替える
-    const img = h("img", { class: "thumb", alt: "", decoding: "async", loading: "lazy", draggable: "false", src: bridge.thumbUrl(it) });
+    const img = h("img", { class: "thumb", alt: "", decoding: "async", loading: "lazy", draggable: "false", ...(it.token ? {} : { src: bridge.thumbUrl(it) }) });
     img.onload = () => el.classList.add("is-ready");
     const el = h("button", {
       class: "tile" + (this.edited.has(key) ? " is-edited" : "") + (this.selected.has(key) ? " is-selected" : ""),
       onClick: () => {
         if (el._long) return (el._long = false);
         if (this.selecting) this.toggle(el);
-        else this.onOpen(it, img.src || null);
+        else this.onOpen(it, it.token ? null : img.src || null);
       },
     }, img, h("span", { class: "mark" }), h("span", { class: "check" }));
     el._item = it;
@@ -144,7 +158,7 @@ export class Library {
     let timer = 0, sx = 0, sy = 0;
     const onLong = () => {
       clearTimeout(timer);
-      if (el._long) return;
+      if (el._long || it.token) return; // 読み込んだ写真は、スマホの中の元を消せないので選ばせない
       el._long = true;
       bridge.haptic("confirm");
       if (!this.selecting) this.startSelect();
@@ -182,6 +196,7 @@ export class Library {
     for (const t of this.list.querySelectorAll(".tile.is-selected")) t.classList.remove("is-selected");
   }
   toggle(el, on) {
+    if (el._item.token) return;
     const k = el._key, now = on === undefined ? !this.selected.has(k) : on;
     if (now) this.selected.add(k);
     else this.selected.delete(k);
@@ -190,7 +205,7 @@ export class Library {
     this.renderSelect();
   }
   selectAll() {
-    const tiles = [...this.list.querySelectorAll(".tile")];
+    const tiles = [...this.list.querySelectorAll(".tile")].filter((t) => !t._item.token);
     const all = tiles.length && tiles.every((t) => this.selected.has(t._key));
     for (const t of tiles) this.toggle(t, !all);
     bridge.haptic("tick");
@@ -278,7 +293,14 @@ export class Library {
     }
     const res = await fetch(bridge.mediaUrl(it));
     if (!res.ok) throw new Error("raw");
-    const t = await this.engine.decodeThumb(await res.arrayBuffer(), 384);
+    let t;
+    try {
+      t = await this.engine.decodeThumb(await res.arrayBuffer(), 384);
+    } catch (e) {
+      // RAW ではない写真（JPEG など）は、写真そのものを小さな画にする
+      if (it.token && !/dng$/i.test(it.name || "")) return bridge.mediaUrl(it);
+      throw e;
+    }
     const cv = document.createElement("canvas");
     this.engine.renderThumb(t, look, cv, params);
     const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.86));
