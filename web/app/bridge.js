@@ -27,6 +27,8 @@ export function listRaw() {
   if (fake()) return fake().listRaw();
   return real() ? JSON.parse(real().listRaw()) : [];
 }
+// 撮る画面のピクセルアートとゲームの色味（窓口 版 8）。古い APK では撮る画面には出ない（撮った写真には効く）
+export const PIXEL_BRIDGE = 8;
 // フラッシュをたいて撮る（窓口 版 6）
 export const FLASH_BRIDGE = 6;
 // 写ルンですの光り方（予備の発光なしで 1 回だけ光る。窓口 版 7）。古い APK では、ふつうのフラッシュで撮る

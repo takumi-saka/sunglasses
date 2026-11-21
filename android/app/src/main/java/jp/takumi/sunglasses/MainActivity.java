@@ -90,7 +90,7 @@ public class MainActivity extends Activity {
     private static final String HOST = BuildConfig.HOST;
     private static final String START_URL = BuildConfig.START_URL;
     private static final String LOCAL = BuildConfig.LOCAL_PREFIX;
-    private static final int BRIDGE_VERSION = 7; // 7: 写ルンですの光り方（予備の発光なしで 1 回だけ光る。2026-11-15）、6: フラッシュをたいて撮る（2026-11-15）、5: 拡大・個別のレンズ（2026-11-13）、 2: 撮る機能、3: 核を 2 つ混ぜる・手動のシャッター速度など（2026-11-05）、4: 写真の削除（2026-11-06）
+    private static final int BRIDGE_VERSION = 8; // 8: 撮る画面のピクセルアートとゲームの色味（2026-11-21）、7: 写ルンですの光り方（予備の発光なしで 1 回だけ光る。2026-11-15）、6: フラッシュをたいて撮る（2026-11-15）、5: 拡大・個別のレンズ（2026-11-13）、 2: 撮る機能、3: 核を 2 つ混ぜる・手動のシャッター速度など（2026-11-05）、4: 写真の削除（2026-11-06）
     private static final String ACTION_CAMERA = "jp.takumi.sunglasses.CAMERA";
     private static final int REQ_PICK = 1;
     private static final int REQ_CHOOSER = 2;
@@ -1022,6 +1022,12 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 Log.w(TAG, "look slot", e);
             }
+        }
+
+        // 版 8: ピクセルアート（枠の短い辺に並ぶマスの数。0 で無し）とゲームの色味（0〜2）
+        @JavascriptInterface
+        public void cameraSetPixel(float cells, float game) {
+            renderer.setPixel(cells, game);
         }
 
         // 版 3: 重み（カメラの素の画・対応表 0・対応表 1。Sun Level）

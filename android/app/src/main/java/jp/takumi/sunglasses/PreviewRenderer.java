@@ -34,8 +34,10 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
             + "in vec2 aPos;\n"
             + "uniform mat4 uTex;\n"
             + "out vec2 vUv;\n"
+            + "out vec2 vS;\n"
             + "void main() {\n"
             + "  vec2 uv = aPos * 0.5 + 0.5;\n"
+            + "  vS = uv;\n"
             + "  vUv = (uTex * vec4(uv, 0.0, 1.0)).xy;\n"
             + "  gl_Position = vec4(aPos, 0.0, 1.0);\n"
             + "}\n";
@@ -62,9 +64,55 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
             + "uniform vec3 uHiB;\n"
             + "uniform float uNB;\n"
             + "uniform float uTime;\n"
+            // 2026-11-21 ピクセルアートとゲームの色味（ページ側 web/engine/shaders.js の FS_FINAL と同じ式）。
+            // uCells = 枠に並ぶマスの数（横・縦。0 で無し）、uGame = ゲームの色味（0〜2）。マスの色はマスの真ん中の 1 点
+            + "uniform mat4 uTex;\n"
+            + "uniform vec2 uCells;\n"
+            + "uniform float uGame;\n"
             + "in vec2 vUv;\n"
+            + "in vec2 vS;\n"
             + "out vec4 o;\n"
             + "float s2l(float c) { return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }\n"
+            + "float l2s(float c) { return c <= 0.0031308 ? 12.92 * c : 1.055 * pow(max(c, 0.0), 1.0 / 2.4) - 0.055; }\n"
+            + "const float GT_X[9] = float[9](0.0, 0.10, 0.17, 0.22, 0.41, 0.54, 0.65, 0.89, 1.0);\n"
+            + "const float GT_Y[9] = float[9](0.0, 0.0, 0.03, 0.08, 0.29, 0.45, 0.62, 0.86, 1.0);\n"
+            + "const float GC_X[9] = float[9](0.0, 0.01, 0.025, 0.05, 0.09, 0.11, 0.15, 0.25, 0.4);\n"
+            + "const float GC_Y[9] = float[9](0.0, 0.017, 0.048, 0.09, 0.135, 0.165, 0.21, 0.29, 0.4);\n"
+            + "float ip9(float x, float xs[9], float ys[9]) {\n"
+            + "  if (x <= xs[0]) return ys[0];\n"
+            + "  for (int i = 1; i < 9; i++) if (x <= xs[i]) return mix(ys[i - 1], ys[i], (x - xs[i - 1]) / (xs[i] - xs[i - 1]));\n"
+            + "  return ys[8];\n"
+            + "}\n"
+            + "vec3 okLin(float L, float a, float b) {\n"
+            + "  float l = L + 0.3963377774 * a + 0.2158037573 * b, m = L - 0.1055613458 * a - 0.0638541728 * b, s = L - 0.0894841775 * a - 1.2914855480 * b;\n"
+            + "  l = l * l * l; m = m * m * m; s = s * s * s;\n"
+            + "  return vec3(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);\n"
+            + "}\n"
+            + "bool okIn(vec3 r) { return all(greaterThanEqual(r, vec3(-1e-4))) && all(lessThanEqual(r, vec3(1.0001))); }\n"
+            + "vec3 gameColor(vec3 c, float s) {\n"
+            + "  vec3 q = vec3(s2l(c.r), s2l(c.g), s2l(c.b));\n"
+            + "  float l = pow(0.4122214708 * q.r + 0.5363325363 * q.g + 0.0514459929 * q.b, 1.0 / 3.0);\n"
+            + "  float m = pow(0.2119034982 * q.r + 0.6806995451 * q.g + 0.1073969566 * q.b, 1.0 / 3.0);\n"
+            + "  float t = pow(0.0883024619 * q.r + 0.2817188376 * q.g + 0.6299787005 * q.b, 1.0 / 3.0);\n"
+            + "  float L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * t;\n"
+            + "  float a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * t;\n"
+            + "  float b = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * t;\n"
+            + "  L = clamp(L + s * (ip9(L, GT_X, GT_Y) - L), 0.0, 1.0);\n"
+            + "  float ch = length(vec2(a, b));\n"
+            + "  if (ch > 1e-6) {\n"
+            + "    float w = L < 0.1 ? mix(0.2, 0.3, L / 0.1) : (L < 0.3 ? mix(0.3, 1.0, (L - 0.1) / 0.2) : 1.0);\n"
+            + "    float k = max(ch + s * w * (ip9(ch, GC_X, GC_Y) - ch), 0.0) / ch;\n"
+            + "    a *= k; b *= k;\n"
+            + "  }\n"
+            + "  vec3 r = okLin(L, a, b);\n"
+            + "  if (!okIn(r)) {\n"
+            + "    float lo = 0.0, hi = 1.0;\n"
+            + "    for (int i = 0; i < 10; i++) { float h = 0.5 * (lo + hi); if (okIn(okLin(L, a * h, b * h))) lo = h; else hi = h; }\n"
+            + "    r = okLin(L, a * lo, b * lo);\n"
+            + "  }\n"
+            + "  r = clamp(r, 0.0, 1.0);\n"
+            + "  return clamp(vec3(l2s(r.r), l2s(r.g), l2s(r.b)), 0.0, 1.0);\n"
+            + "}\n"
             + "float curveAt(float x) {\n"
             + "  float p = clamp(x, 0.0, 1.0) * 1023.0; int i = min(int(p), 1022);\n"
             + "  return mix(texelFetch(uCurve, ivec2(i, 0), 0).r, texelFetch(uCurve, ivec2(i + 1, 0), 0).r, p - float(i));\n"
@@ -79,7 +127,9 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
             + "  return texture(uLutB, (t * (uNB - 1.0) + 0.5) / uNB).rgb;\n"
             + "}\n"
             + "void main() {\n"
-            + "  vec3 c = texture(uCam, vUv).rgb;\n"
+            + "  vec2 uv = vUv;\n"
+            + "  if (uCells.x > 0.0) uv = (uTex * vec4((floor(vS * uCells) + 0.5) / uCells, 0.0, 1.0)).xy;\n"
+            + "  vec3 c = texture(uCam, uv).rgb;\n"
             + "  vec3 outc = c * uWN;\n"
             + "  if (uWA > 0.0 || uWB > 0.0) {\n"
             + "    vec3 lin = uPreset == 1 ? vec3(s2l(c.r), s2l(c.g), s2l(c.b)) : vec3(curveAt(c.r), curveAt(c.g), curveAt(c.b));\n"
@@ -87,6 +137,7 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
             + "    if (uWA > 0.0) outc += uWA * lutA(max(base * uGainA, 0.0));\n"
             + "    if (uWB > 0.0) outc += uWB * lutB(max(base * uGainB, 0.0));\n"
             + "  }\n"
+            + "  if (uGame > 0.0) outc = gameColor(clamp(outc, 0.0, 1.0), uGame);\n"
             + "  if (uZebra == 1 && max(c.r, max(c.g, c.b)) > 0.985 && mod(gl_FragCoord.x + gl_FragCoord.y + uTime * 24.0, 14.0) < 7.0)\n"
             + "    outc = vec3(1.0, 0.32, 0.25);\n"
             + "  o = vec4(outc, 1.0);\n"
@@ -113,6 +164,7 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
     private volatile float[] matrix = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     private volatile boolean lookOn = true, zebra = true, preset = false;
     private volatile float gainA = 1f, gainB = 1f, wN = 0f, wA = 1f, wB = 0f;
+    private volatile float pixN = 0f, game = 0f;  // ピクセルアート: 枠の短い辺に並ぶマスの数（0 で無し）と、ゲームの色味（0〜2）
     private volatile int rx, ry, rw = 1, rh = 1;  // 画を出す枠（ビューの画素、左上が原点）
 
     PreviewRenderer(GLSurfaceView view, Host host) {
@@ -147,6 +199,13 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
     void setGains(float a, float b) {
         gainA = a;
         gainB = b;
+    }
+
+    // ピクセルアート: 枠の短い辺に並ぶマスの数（0 で無し）と、ゲームの色味（0〜2）
+    void setPixel(float n, float g) {
+        pixN = n;
+        game = g;
+        view.requestRender();
     }
 
     // 重み: カメラの素の画・対応表 1・対応表 2（足して 1）
@@ -238,7 +297,7 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
         GLES30.glClearColor(0, 0, 0, 1);
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT);
         GLES30.glViewport(rx, surfH - ry - rh, rw, rh);
-        draw(lookOn, zebra);
+        draw(lookOn, zebra, true);
         long now = System.currentTimeMillis();
         if (now - lastSample > 400) {
             lastSample = now;
@@ -246,7 +305,8 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
         }
     }
 
-    private void draw(boolean look, boolean zeb) {
+    // fx: ピクセルアートとゲームの色味をかけるか（画面に出すときだけ。明るさを測るための小さい画にはかけない）
+    private void draw(boolean look, boolean zeb, boolean fx) {
         // 対応表がまだ無いときと、素の画を見たいときは、カメラの画だけ
         float a = look && lutReady[0] ? wA : 0f, b = look && lutReady[1] ? wB : 0f;
         float n = look ? wN : 1f;
@@ -282,6 +342,10 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
         GLES30.glUniform3fv(GLES30.glGetUniformLocation(prog, "uLoB"), 1, lutLo[1], 0);
         GLES30.glUniform3fv(GLES30.glGetUniformLocation(prog, "uHiB"), 1, lutHi[1], 0);
         GLES30.glUniform1f(GLES30.glGetUniformLocation(prog, "uNB"), Math.max(2, lutN[1]));
+        boolean px = fx && look && pixN > 0f;
+        float side = px ? Math.min(rw, rh) / pixN : 1f;
+        GLES30.glUniform2f(GLES30.glGetUniformLocation(prog, "uCells"), px ? rw / side : 0f, px ? rh / side : 0f);
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(prog, "uGame"), fx && look ? game : 0f);
         GLES30.glUniform1f(GLES30.glGetUniformLocation(prog, "uTime"), (System.nanoTime() - t0) / 1e9f);
         GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4);
         GLES30.glDisableVertexAttribArray(aPos);
@@ -292,12 +356,12 @@ final class PreviewRenderer implements GLSurfaceView.Renderer, SurfaceTexture.On
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo);
         GLES30.glViewport(0, 0, SAMPLE_W, SAMPLE_H);
         ByteBuffer raw = ByteBuffer.allocateDirect(SAMPLE_W * SAMPLE_H * 4);
-        draw(false, false);
+        draw(false, false, false);
         GLES30.glReadPixels(0, 0, SAMPLE_W, SAMPLE_H, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, raw);
         String lookB64 = "";
         if (lutReady[0]) {
             ByteBuffer look = ByteBuffer.allocateDirect(SAMPLE_W * SAMPLE_H * 4);
-            draw(true, false);
+            draw(true, false, false);
             GLES30.glReadPixels(0, 0, SAMPLE_W, SAMPLE_H, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, look);
             lookB64 = b64(look);
         }
