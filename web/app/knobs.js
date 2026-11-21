@@ -26,6 +26,7 @@ export const KNOBS = {
   // 2026-11-21 ピクセルアート: ドットの大きさ（0 で無し。大きいほど粗い）と、ゲームの色味（100 が PS1 の画面の実測どおり）
   pixel: { label: "ドットの大きさ", min: 0, max: 100, fmt: (v) => String(Math.round(v)) },
   gameColor: { label: "ゲームの色味", min: 0, max: 200, fmt: (v) => String(Math.round(v)) },
+  pixelLine: { label: "マスの線", min: 0, max: 200, fmt: (v) => String(Math.round(v)) },
   sharpen: { label: "シャープ", min: 0, max: 150 },
   noise: { label: "ノイズ軽減", min: 0, max: 100 },
   colorNoise: { label: "カラーノイズ軽減", min: 0, max: 100 },
@@ -42,12 +43,12 @@ for (const k of Object.values(KNOBS)) {
 // 下の板の並び。「よく使う」は 本人がよく動かすもの（露光量・白み・色温度・彩度・粒）
 export const GROUPS = [
   { id: "core", name: "ルック" },
-  { id: "basic", name: "よく使う", knobs: ["exposure", "bloom", "temp", "saturation", "grain", "pixel", "gameColor"] },
+  { id: "basic", name: "よく使う", knobs: ["exposure", "bloom", "temp", "saturation", "grain", "pixel", "gameColor", "pixelLine"] },
   { id: "light", name: "ライト", knobs: ["exposure", "contrast", "highlights", "shadows", "whites", "blacks"], curve: true },
   { id: "color", name: "カラー", knobs: ["temp", "tint", "vibrance", "saturation"], bw: true },
   { id: "mix", name: "カラーミックス" },
   { id: "grade", name: "グレーディング" },
-  { id: "effect", name: "効果", knobs: ["texture", "clarity", "dehaze", "vignette", "grain", "grainSize", "halation", "bloom", "soften", "pixel", "gameColor"] },
+  { id: "effect", name: "効果", knobs: ["texture", "clarity", "dehaze", "vignette", "grain", "grainSize", "halation", "bloom", "soften", "pixel", "gameColor", "pixelLine"] },
   { id: "detail", name: "ディテール", knobs: ["sharpen", "noise", "colorNoise"] },
   { id: "crop", name: "切り抜き" },
 ];

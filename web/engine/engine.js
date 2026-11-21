@@ -109,6 +109,7 @@ export function defaultParams() {
     grading: { shadows: zone(), midtones: zone(), highlights: zone(), global: zone(), balance: 0 },
     texture: 0, clarity: 0, dehaze: 0, vignette: 0,
     grain: 0, grainSize: 0, halation: 0, bloom: 0, soften: 0,
+    pixelLine: 100, // マスの線（0〜200。100 = GTA6 のお手本と同じ濃さ。ドットの大きさが 0 の時は何もしない）
     pixel: 0, gameColor: 0, // 2026-11-21 ピクセルアート（ドットの大きさ。0 で無し）とゲームの色味（0〜200）
     sharpen: 0, noise: 0, colorNoise: 0,
     bw: false,
@@ -502,9 +503,10 @@ export class Engine {
   _pixelUniforms(reg) {
     const p = this.params, off = this.compare || !reg;
     const pixel = off ? 0 : C.clamp(p.pixel || 0, 0, 100), game = off ? 0 : C.clamp(p.gameColor || 0, 0, 200) / 100;
-    if (!(pixel > 0)) return { uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: game };
-    const n = pixelCells(pixel), side = Math.min(reg.VW, reg.VH) / n;
-    return { uCells: [reg.VW / side, reg.VH / side], uRegion: [reg.x0 / reg.VW, reg.y0 / reg.VH, reg.bw / reg.VW, reg.bh / reg.VH], uGame: game };
+    if (!(pixel > 0)) return { uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: game, uLine: 0 };
+    // 書き出しでは、マスの 1 辺を画素の整数にそろえる（線の太さがマスごとに変わらないように。お手本は 1 辺 12 画素）
+    const n = pixelCells(pixel), raw = Math.min(reg.VW, reg.VH) / n, side = reg.snap ? Math.max(1, Math.round(raw)) : raw;
+    return { uCells: [reg.VW / side, reg.VH / side], uRegion: [reg.x0 / reg.VW, reg.y0 / reg.VH, reg.bw / reg.VW, reg.bh / reg.VH], uGame: game, uLine: C.clamp(p.pixelLine ?? 100, 0, 200) / 100 };
   }
 
   _final(r, target, xf, clip) {
@@ -806,7 +808,7 @@ export class Engine {
       VH = Math.round(VH * s);
     }
     const r = this._renderRegion(VW, VH, 0, 0, VW, VH, {});
-    r.reg = { VW, VH, x0: 0, y0: 0, bw: VW, bh: VH };
+    r.reg = { VW, VH, x0: 0, y0: 0, bw: VW, bh: VH, snap: true };
     const t = this._rt(VW, VH, true);
     this._final(r, t, I3, false);
     const px = new Uint8ClampedArray(VW * VH * 4);
@@ -840,10 +842,10 @@ export class Engine {
   // fx（つまみの値）を渡すと、ピクセルアートとゲームの色味もかける（2026-11-21。撮った直後と一覧の画で、ドットが消えて見えた）
   _thumbFx(fx, w, h) {
     const pixel = C.clamp((fx && fx.pixel) || 0, 0, 100), game = C.clamp((fx && fx.gameColor) || 0, 0, 200) / 100;
-    if (!(pixel > 0)) return { uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: game };
+    if (!(pixel > 0)) return { uCells: [0, 0], uRegion: [0, 0, 1, 1], uGame: game, uLine: 0 };
     // 小さな画は切り抜く前の全体なので、マスの大きさは、切り抜いたあとの短い辺に合わせる
     const c = (fx && fx.crop) || {}, side = Math.max(1, Math.min(w * (c.w || 1), h * (c.h || 1)) / pixelCells(pixel));
-    return { uCells: [w / side, h / side], uRegion: [0, 0, 1, 1], uGame: game };
+    return { uCells: [w / side, h / side], uRegion: [0, 0, 1, 1], uGame: game, uLine: 0 }; // 小さな画には線を入れない（マスが小さすぎる）
   }
 
   renderThumb(t, look, canvas, params = null, fx = params) {

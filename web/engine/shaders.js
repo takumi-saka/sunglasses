@@ -406,6 +406,7 @@ uniform int uClip;
 uniform vec2 uCells;
 uniform vec4 uRegion;
 uniform float uGame;
+uniform float uLine; // マスの線の強さ（0〜2。1 = お手本と同じ）
 const float GT_X[9] = float[9](0.0, 0.10, 0.17, 0.22, 0.41, 0.54, 0.65, 0.89, 1.0);
 const float GT_Y[9] = float[9](0.0, 0.0, 0.03, 0.08, 0.29, 0.45, 0.62, 0.86, 1.0);
 const float GC_X[9] = float[9](0.0, 0.01, 0.025, 0.05, 0.09, 0.11, 0.15, 0.25, 0.4);
@@ -445,11 +446,37 @@ vec3 gameColor(vec3 c, float s) {
   }
   return clamp(l2s(clamp(r, 0.0, 1.0)), 0.0, 1.0);
 }
+// マスの線（2026-11-21）。GTA6 のお手本 9 枚の、色が平らなマスを測った形。マスの幅を 12 に分けた位置ごとの、暗くなる割合。
+// PL_X = 左右の端の縦の線、PL_Y = 上下のなだらかな山（マスの真ん中の列だけ。PL_M がその効き方）。線は暗い所ほど濃く、山は暗い所では弱い
+const float PL_X[12] = float[12](0.032, 0.019, 0.004, 0.0, 0.0, 0.0, 0.0, 0.0, 0.002, 0.009, 0.022, 0.032);
+const float PL_M[12] = float[12](0.0, 0.2, 0.5, 0.8, 1.0, 1.0, 1.0, 1.0, 0.7, 0.45, 0.2, 0.0);
+const float PL_Y[12] = float[12](0.0175, 0.0148, 0.0125, 0.0110, 0.0095, 0.0060, 0.0005, -0.0040, -0.0018, 0.0064, 0.0160, 0.0215);
+float pl12(float t, float T[12]) {
+  float x = fract(t) * 12.0 - 0.5, i0 = floor(x);
+  int a = int(i0 + 12.0) % 12, b = (a + 1) % 12;
+  return mix(T[a], T[b], x - i0);
+}
+// 画面の 1 画素がマスのどれだけに当たるか（w）の幅でならす（マスが小さい時に、線がちらつかないように）
+float plAvg(float t, float w, float T[12]) {
+  w = min(w, 1.0);
+  float s = 0.0;
+  for (int k = 0; k < 6; k++) s += pl12(t + w * ((float(k) + 0.5) / 6.0 - 0.5), T);
+  return s / 6.0;
+}
+vec3 cellLine(vec3 c, vec2 p, vec2 w, float s) {
+  float Y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  float line = plAvg(p.x, w.x, PL_X) * (0.052 - 0.030 * Y) / 0.032;
+  float hump = plAvg(p.y, w.y, PL_Y) * plAvg(p.x, w.x, PL_M) * smoothstep(0.08, 0.4, Y);
+  return c * clamp(1.0 - s * (line + hump), 0.0, 1.5);
+}
 void main() {
   vec2 uv = (uXf * vec3(vUv, 1.0)).xy;
   vec3 c;
+  vec2 gp = vec2(0.0), gw = vec2(1.0);
   if (uCells.x > 0.0) {
     vec2 g = uRegion.xy + uv * uRegion.zw;
+    gp = g * uCells;
+    gw = fwidth(gp);
     vec2 cell = (floor(g * uCells) + 0.5) / uCells;
     vec2 d = 1.0 / (9.0 * uCells * uRegion.zw);
     uv = clamp((cell - uRegion.xy) / uRegion.zw, 0.0, 1.0);
@@ -460,6 +487,7 @@ void main() {
   if (uBloomOn == 1) c += texture(uGlow, uv).r * uBloom * vec3(1.0, 1.0 - 0.03 * uWarm, 1.0 - 0.10 * uWarm);
   c = clamp(c, 0.0, 1.0);
   if (uGame > 0.0) c = gameColor(c, uGame);
+  if (uCells.x > 0.0 && uLine > 0.0) c = cellLine(c, gp, gw, uLine);
   if (uBw == 1) c = lab2rgb(vec3(rgb2lab(c).x, 0.0, 0.0));
   if (uClip == 1) {
     if (max(c.r, max(c.g, c.b)) >= 0.996) c = vec3(1.0, 0.25, 0.2);
