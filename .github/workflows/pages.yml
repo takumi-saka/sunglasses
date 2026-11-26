@@ -44,6 +44,9 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: web
+      - name: Wait for artifact
+        # 上げた直後は、公開の段が包みを見つけられないことがある（2026-11-26 に 6 回続けて失敗）。少し待つ
+        run: sleep 20
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
