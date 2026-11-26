@@ -125,50 +125,104 @@ await page.evaluate(() => (window.__sceneLevel = 35));
 await page.waitForTimeout(2500);
 log.自動の露出_暗い景色 = await val(0);
 
-// 1. 上の設定の幅: 値を変えても、4 つの位置と幅（シャッター音の項目は 2026-11-13 になくした）が変わらない
-const boxes = () => page.evaluate(() => [...document.querySelectorAll(".cam-set")].map((e) => {
-  const r = e.getBoundingClientRect();
-  return [Math.round(r.left), Math.round(r.width)];
-}));
-const before = await boxes();
-await page.click("#cam-set-jpeg");
-await page.click("#cam-set-timer");
-log.上の設定の値 = await page.evaluate(() => [...document.querySelectorAll(".cam-set b")].map((b) => b.textContent));
-log.上の設定の幅は同じ = JSON.stringify(before) === JSON.stringify(await boxes());
-log.上の設定の位置と幅 = before;
-await page.click("#cam-set-jpeg");
-await page.click("#cam-set-timer");
-await page.click("#cam-set-timer");
+// ---- 2026-11-26 見た目を作り直した（写真の下に数字の列・目盛り。設定とルックの一覧も写真の下）----
+const cellOf = (key) => page.locator(`.cam-pro-cell[data-key="${key}"]`);
+const cellInfo = async (key) => ({ 値: await cellOf(key).locator("b").textContent(), 名前: await cellOf(key).locator("small").textContent(), 印: (await cellOf(key).getAttribute("class")).replace("cam-pro-cell rot", "").trim() });
+const lookName = () => page.locator("#cam-core").getAttribute("data-name");
+const looksOpen = async () => !(await page.locator("#cam-looks").evaluate((el) => el.hidden));
+const openLooks = async () => {
+  if (!(await looksOpen())) await page.click("#cam-core");
+  await page.waitForTimeout(300);
+};
+const closeLooks = async () => {
+  if (await looksOpen()) await page.click("#cam-looks .cam-done");
+  await page.waitForTimeout(200);
+};
+const tile = (id) => page.locator(`.cam-look[data-look="${id}"]`);
+const tiles = () => page.evaluate(() => [...document.querySelectorAll(".cam-look")].map((e) => e.textContent + (e.classList.contains("is-on") ? "*" : "")));
 
-// 露出の輪を右へなぞる（値が減る向き）→ 手動
+// 0. 写真の上に、字や印が無い（本人 11/26）。写真の中にある部品は、枠の線・三分割の線・水平の線・ピントの輪・開けない時の知らせだけ
+log.写真の上の部品 = await page.evaluate(() => {
+  const v = document.getElementById("cam-view"), r = v.getBoundingClientRect();
+  const inside = [...document.querySelectorAll("#camera *")].filter((e) => {
+    if (e === v || e.closest("#cam-amb")) return false;
+    const b = e.getBoundingClientRect();
+    return b.width && b.height && getComputedStyle(e).visibility !== "hidden" && b.left < r.right - 1 && b.right > r.left + 1 && b.top < r.bottom - 1 && b.bottom > r.top + 1;
+  });
+  return { 部品: inside.map((e) => e.id || e.className), 字のある部品: inside.filter((e) => e.textContent.trim()).map((e) => e.id || e.className) };
+});
+
+// 1. 設定の表: 右下の印をたたくと、写真の下が設定に替わる。写真の大きさは変わらない
+const viewBox = () => page.evaluate(() => {
+  const r = document.getElementById("cam-view").getBoundingClientRect();
+  return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+});
+const vb0 = await viewBox();
+await page.click("#cam-gear");
+await page.waitForTimeout(300);
+await shot("c1b_設定");
+const rows = () => page.evaluate(() => [...document.querySelectorAll("#cam-sets .cam-srow")].map((r) => r.querySelector(".cam-sk").firstChild.textContent + ": " + ([...r.querySelectorAll(".cam-sopt.is-on")].map((o) => o.textContent)[0] ?? (r.querySelector(".cam-sw.is-on") ? "入" : "切"))));
+log.設定 = { はじめ: await rows(), 写真の位置は同じ: JSON.stringify(vb0) === JSON.stringify(await viewBox()) };
+await clear();
+await page.locator(".cam-sopt", { hasText: "3秒" }).click();
+await page.locator(".cam-srow", { hasText: "JPEG も保存" }).click();
+await page.locator(".cam-srow", { hasText: "白とび警告" }).click();
+await page.locator(".cam-sopt", { hasText: "グリッド" }).click();
+await page.locator(".cam-sopt", { hasText: "1回" }).click();
+await page.waitForTimeout(200);
+log.設定.変えたあと = { 行: await rows(), 上のタイマーの印: [await page.locator("#cam-set-timer").getAttribute("class"), await page.locator("#cam-set-timer b").textContent()], ゼブラの呼び出し: await calls("zebra"),
+  三分割の線が出た: !(await page.locator("#cam-grid").evaluate((el) => el.hidden)), AF: (await lastManual())?.af ?? (await page.evaluate(() => localStorage.getItem("cameraAf"))) };
+await shot("c1c_設定を変えた");
+await page.locator(".cam-sopt", { hasText: "オフ" }).last().click();
+await page.locator(".cam-srow", { hasText: "JPEG も保存" }).click();
+await page.locator(".cam-srow", { hasText: "白とび警告" }).click();
+await page.locator(".cam-sopt", { hasText: "1.85:1" }).click();
+await page.locator(".cam-sopt", { hasText: "連続" }).click();
+await page.click("#cam-sets .cam-done");
+await page.waitForTimeout(200);
+// 上のタイマーの印: たたくたびに オフ → 3 → 10 → オフ
+await page.click("#cam-set-timer");
+const t1 = await page.locator("#cam-set-timer b").textContent();
+await page.click("#cam-set-timer");
+const t2 = await page.locator("#cam-set-timer b").textContent();
+await page.click("#cam-set-timer");
+log.設定.戻したあと = { 行: (await page.click("#cam-gear"), await rows()), 上のタイマーをたたいた順: [t1, t2, await page.locator("#cam-set-timer b").textContent()] };
+await page.click("#cam-sets .cam-done");
+
+// 露出の目盛りを右へなぞる（値が減る向き）→ 手動。麦わら色の露出をもう一度たたくと自動に戻る
 await page.evaluate(() => (window.__sceneLevel = 110));
 await page.waitForTimeout(2500);
+log.露出_自動 = await cellInfo("ev");
 await clear();
 await drag("#cam-ev .rg", 0, 40);
-log.手動にした値 = await val(0);
-log.手動の自動ボタン = await page.locator(".cam-auto").getAttribute("class");
+log.手動にした値 = { 目盛り: await val(0), 項目: await cellInfo("ev") };
 log.カメラの露出補正 = (await calls("ev")).slice(-1);
-await page.click(".cam-auto");
+await cellOf("ev").click();
 await page.waitForTimeout(600);
-log.自動に戻した = await page.locator(".cam-auto").getAttribute("class");
+log.もう一度たたいて自動へ = await cellInfo("ev");
 await drag("#cam-ev .rg", 0, 30);
 await doubleTap("#cam-ev .rg", 0);
-log.二回たたいて自動へ = await page.locator(".cam-auto").getAttribute("class");
+log.二回たたいて自動へ = await cellInfo("ev");
 
-// Sun Level を左へ（値が増える向き）、右へ（減る向き）。露出と Sun Level は見出しで切り替える
-// 2026-11-13 Sun Level の輪は、Aftersun を足している時だけ出る。先に、ルックの一覧から Aftersun Blue を足す
-log.はじめのルック = { 名前: await page.locator("#cam-core b").textContent(), SunLevelの見出しが隠れている: await page.locator(".cam-tab", { hasText: "Sun Level" }).first().evaluate((el) => el.hidden) };
-await page.locator("#cam-core").click();
-await page.waitForTimeout(300);
-await page.locator(".cam-look", { hasText: "Aftersun Blue" }).click();
+// Sun Level の項目は、Aftersun を足している時だけ出る。ルックの一覧から Aftersun Blue を足す
+log.はじめのルック = { 名前: await lookName(), 上の字: [await page.locator("#cam-core b").textContent(), await page.locator("#cam-core small").textContent()], SunLevelの項目が隠れている: await cellOf("sun").evaluate((el) => el.hidden) };
+await openLooks();
+await shot("c2a_ルックの一覧");
+log.ルックの一覧 = { 並び: await tiles(), カメラ: await page.locator(".cam-kind").allTextContents(), 写真の位置は同じ: JSON.stringify(vb0) === JSON.stringify(await viewBox()), シャッターが見える: await page.locator("#cam-shutter").isVisible() };
+await tile("deepblue").click();
 await page.waitForTimeout(600);
-await page.locator(".cam-tab:visible", { hasText: "Sun Level" }).click();
+log.Blueを足した = { 名前: await lookName(), 一覧は開いたまま: await looksOpen(), 並び: await tiles() };
+await closeLooks();
+log.SunLevelの項目 = await cellInfo("sun");
+await cellOf("sun").click();
 await page.waitForTimeout(200);
 log.切り替えたあとの輪 = await page.evaluate(() => [...document.querySelectorAll("#cam-ev .rg")].map((r) => r.getAttribute("aria-label") + (r.hidden ? "（隠れている）" : "（出ている）")));
 await clear();
 await drag("#cam-ev .rg", 1, 120);
-log.SunLevel = { 値: await val(1), 最後の重み: (await calls("w")).slice(-1) };
-await shot("c2_露出とSunLevel");
+log.SunLevel = { 値: await val(1), 項目: await cellInfo("sun"), 最後の重み: (await calls("w")).slice(-1) };
+await shot("c2_SunLevel");
+await cellOf("ev").click();
+await page.waitForTimeout(200);
 
 // 3. たたいた所の明るさ: 左（暗い所）をたたくと、自動の露出が明るい向きに動く
 await page.evaluate(() => (window.__sceneLevel = 110));
@@ -184,23 +238,23 @@ await page.waitForTimeout(3000);
 const evRight = await val(0);
 log.たたいた所の明るさ = { 真ん中で測ったとき: evMid, 左の暗い所をたたいた: evLeft, 右の明るい所をたたいた: evRight, ピントの呼び出し: (await calls("focus")).slice(-2) };
 
-// 2. 手で決める撮り方: S を開いて回す → ISO は自動で決まる
-await page.click(".cam-pro-cell >> nth=0");
+// 2. 手で決める撮り方: S をたたいて回す → ISO は自動で決まる
+await cellOf("s").click();
 await page.waitForTimeout(400);
-log.S_開いた輪 = { 名前: await page.locator("#cam-ev .rg .rg-label").textContent(), 値: await page.locator("#cam-ev .rg .rg-val").textContent() };
-await shot("c3_Sの輪_自動");
+log.S_開いた = { 目盛りの名前: await page.locator("#cam-ev .rg .rg-label").textContent(), 項目: await cellInfo("s") };
+await shot("c3_Sの目盛り_自動");
 await clear();
 await drag("#cam-ev .rg", 0, -60);
 await page.waitForTimeout(2600);
-log.S_手で決めた = { 値: await page.locator("#cam-ev .rg .rg-val").textContent(), 項目: await page.locator(".cam-pro").innerText(), カメラへ: await lastManual() };
+log.S_手で決めた = { 項目: await page.locator(".cam-pro").innerText(), S: await cellInfo("s"), カメラへ: await lastManual() };
 await shot("c4_Sを手で決めた");
-// ISO も手で決める → 露出計
-await page.click(".cam-pro-cell >> nth=1");
+// ISO も手で決める → 露出は露出計になる
+await cellOf("iso").click();
 await page.waitForTimeout(400);
 await drag("#cam-ev .rg", 0, -48);
-await page.click(".cam-pro-cell >> nth=1");
+await cellOf("ev").click();
 await page.waitForTimeout(2600);
-log.S_ISO_両方 = { 項目: await page.locator(".cam-pro").innerText(), 露出の札: await page.locator("#cam-ev .rg .rg-head").first().innerText(), 露出計の値: await val(0), カメラへ: await lastManual() };
+log.S_ISO_両方 = { 項目: await page.locator(".cam-pro").innerText(), 露出の項目: await cellInfo("ev"), 露出計の値: await val(0), カメラへ: await lastManual() };
 await shot("c5_両方手で決めた_露出計");
 // 両方手で決めたまま撮る → 写真の記録の明るさは、露出計の値と同じになるはず
 await page.click("#cam-shutter");
@@ -213,22 +267,24 @@ log.両方手で決めて撮った記録 = await page.evaluate(() => new Promise
   };
 }));
 // WB を「くもり」、色温度へ
-await page.click(".cam-pro-cell >> nth=2");
+await cellOf("wb").click();
 await page.waitForTimeout(300);
 await drag("#cam-ev .rg", 0, -96);
-log.WB_くもり = { 値: await page.locator("#cam-ev .rg .rg-val").textContent(), カメラへ: await lastManual() };
+log.WB_くもり = { 値: await page.locator("#cam-ev .rg .rg-val").textContent(), 項目: await cellInfo("wb"), カメラへ: await lastManual() };
 await drag("#cam-ev .rg", 0, -330);
 await page.waitForTimeout(2200);
-log.WB_色温度 = { 値: await page.locator("#cam-ev .rg .rg-val").textContent(), カメラへ: await lastManual() };
-await shot("c6_WBの輪");
-// S の輪を 2 回たたいて自動へ（ISO だけ手で決めた状態）
-await page.click(".cam-pro-cell >> nth=0");
+log.WB_色温度 = { 値: await page.locator("#cam-ev .rg .rg-val").textContent(), 項目: await cellInfo("wb"), カメラへ: await lastManual() };
+await shot("c6_WBの目盛り");
+// 麦わら色の S をもう一度たたくと、自動に戻る（ISO だけ手で決めた状態）。目盛りは S のまま
+await cellOf("s").click();
 await page.waitForTimeout(300);
-await doubleTap("#cam-ev .rg", 0);
+await cellOf("s").click();
 await page.waitForTimeout(2600);
-log.Sを自動に戻した = { 項目: await page.locator(".cam-pro").innerText(), カメラへ: await lastManual() };
-await page.click(".cam-pro-cell >> nth=0");
+log.Sを自動に戻した = { 項目: await page.locator(".cam-pro").innerText(), S: await cellInfo("s"), カメラへ: await lastManual() };
+// 自動の S をもう一度たたくと、露出の目盛りに戻る
+await cellOf("s").click();
 await page.waitForTimeout(300);
+log.自動のSをたたいた = { S: await cellInfo("s"), 露出: await cellInfo("ev") };
 
 // 撮る → 写真ごとの直しの記録
 await page.click("#cam-shutter");
@@ -240,7 +296,8 @@ log.撮った写真の記録 = await page.evaluate(() => new Promise((resolve) =
     g.onsuccess = () => resolve(g.result ? { core: g.result.params.core, sunLevel: g.result.params.sunLevel, exposure: g.result.params.exposure } : null);
   };
 }));
-// ルックの長押しで元の画、たたくと一覧が出て、名前をたたくとそのルックになる
+await shot("c6b_撮ったあと");
+// ルックの名前の長押しで元の画、たたくと一覧が出て、小さな画をたたくとそのルックになる
 const cb = await page.locator("#cam-core").boundingBox();
 await clear();
 await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
@@ -249,83 +306,68 @@ await page.waitForTimeout(500);
 log.長押しの間の重み = (await calls("w")).slice(-1);
 await page.mouse.up();
 await page.waitForTimeout(200);
-log.離したあとの重み = (await calls("w")).slice(-1);
-await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
-await page.waitForTimeout(300);
-log.ルックの一覧 = { 出ている: !(await page.locator("#cam-looks").evaluate((el) => el.hidden)), 並び: await page.locator(".cam-look").allTextContents(), 印: await page.locator(".cam-look.is-on").allTextContents() };
-await shot("c7a_ルックの一覧");
-// 一覧の外（写真の上）をたたくと閉じる。ピント合わせには流れない
+log.離したあと = { 重み: (await calls("w")).slice(-1), 一覧は出ていない: !(await looksOpen()) };
+await openLooks();
+// 一覧を出したまま写真をたたく: 一覧は閉じず、ピントが合う（写真を隠していないので）
 await clear();
-await page.mouse.click(60, 200);
+await page.mouse.click(vb.x + vb.width / 2, vb.y + vb.height / 2);
 await page.waitForTimeout(300);
-log.外をたたいた = { 一覧は閉じた: await page.locator("#cam-looks").evaluate((el) => el.hidden), ルック: await page.locator("#cam-core b").textContent(), ピントの呼び出し: (await calls("focus")).length };
-// もう一度出して、5 番目（Aftersun Aqua。名前が長くなる）を選ぶ
-await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
-await page.waitForTimeout(300);
-await page.locator(".cam-look >> nth=6").click();
+log.一覧を出したまま写真をたたいた = { 一覧は開いたまま: await looksOpen(), ピントの呼び出し: (await calls("focus")).length };
+// Aqua に替える
+await clear();
+await tile("aqua").click();
 await page.waitForTimeout(600);
-log.選んだあとのルック = { 名前: await page.locator("#cam-core b").textContent(), 一覧は閉じた: await page.locator("#cam-looks").evaluate((el) => el.hidden), 長い名前の印: await page.locator("#cam-core").evaluate((el) => el.classList.contains("is-long")), 重み: (await calls("w")).slice(-1) };
-const cb2 = await page.locator("#cam-core").boundingBox(), sb = await page.locator("#cam-shutter").boundingBox();
-log.ルック名とシャッターのすき間 = Math.round(cb2.x - (sb.x + sb.width));
-await shot("c7_あと");
-// 2026-11-13 Cinema をオフ（一覧は開いたまま）→ なし（ルックなし）→ Cinema をオン・Aftersun Aqua に戻す
-await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
-await page.waitForTimeout(300);
-await page.locator(".cam-look >> nth=2").click();
+log.選んだあとのルック = { 名前: await lookName(), 上の字: [await page.locator("#cam-core b").textContent(), await page.locator("#cam-core small").textContent()], 並び: await tiles(), 重み: (await calls("w")).slice(-1) };
+await shot("c7_Aquaにした");
+// Cinema をオフ → Aqua も外す（ルックなし）→ Cinema をオン・Aqua に戻す
+await tile("cinema").click();
 await page.waitForTimeout(600);
-log.Cinemaをオフ = { 名前: await page.locator("#cam-core b").textContent(), 一覧は開いたまま: !(await page.locator("#cam-looks").evaluate((el) => el.hidden)), 並び: await page.locator(".cam-look").allTextContents(), 重み: (await calls("w")).slice(-1) };
-await page.locator(".cam-look >> nth=3").click();
+log.Cinemaをオフ = { 名前: await lookName(), 並び: await tiles(), 重み: (await calls("w")).slice(-1) };
+await tile("aqua").click();
 await page.waitForTimeout(600);
-log.どちらもなし = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1), SunLevelの見出しが隠れている: await page.locator(".cam-tab", { hasText: "Sun Level" }).first().evaluate((el) => el.hidden) };
+log.どちらもなし = { 名前: await lookName(), 重み: (await calls("w")).slice(-1), SunLevelの項目が隠れている: await cellOf("sun").evaluate((el) => el.hidden) };
 await shot("c7b_ルックなし");
-await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
-await page.waitForTimeout(300);
-await page.locator(".cam-look >> nth=2").click();
+await tile("cinema").click();
 await page.waitForTimeout(600);
-await page.locator(".cam-look >> nth=6").click();
+await tile("aqua").click();
 await page.waitForTimeout(600);
-log.戻したあと = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1) };
-// 2026-11-19 単独のルック（Warm）: 選ぶと Cinema がオフになり、Cinema をオンにすると Warm が外れる。終わったら Cinema・Aftersun Aqua に戻す
-await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
-await page.waitForTimeout(300);
-await page.locator(".cam-look", { hasText: "Warm" }).click();
+log.戻したあと = { 名前: await lookName(), 重み: (await calls("w")).slice(-1) };
+// 単独のルック（Warm）: 選ぶと Cinema がオフになり、Cinema をオンにすると Warm が外れる。終わったら Cinema・Aqua に戻す
+await tile("warm").click();
 await page.waitForTimeout(600);
-log.Warmを選んだ = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1), SunLevel: await page.evaluate(() => localStorage.getItem("cameraSunSolo")) };
+log.Warmを選んだ = { 名前: await lookName(), 並び: await tiles(), 重み: (await calls("w")).slice(-1), SunLevel: await page.evaluate(() => localStorage.getItem("cameraSunSolo")) };
 await shot("c7c_Warm");
-await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
-await page.waitForTimeout(300);
-log.Warmのときの一覧 = { 並び: await page.locator(".cam-look").allTextContents(), 印: await page.locator(".cam-look.is-on").allTextContents() };
-await shot("c7d_Warmの一覧");
-await page.locator(".cam-look >> nth=2").click();
+await tile("cinema").click();
 await page.waitForTimeout(600);
-log.WarmからCinemaをオン = { 名前: await page.locator("#cam-core b").textContent(), 並び: await page.locator(".cam-look").allTextContents(), 印: await page.locator(".cam-look.is-on").allTextContents() };
-await page.locator(".cam-look >> nth=6").click();
+log.WarmからCinemaをオン = { 名前: await lookName(), 並び: await tiles() };
+await tile("aqua").click();
 await page.waitForTimeout(600);
-log.Warmのあとに戻した = { 名前: await page.locator("#cam-core b").textContent(), 重み: (await calls("w")).slice(-1) };
-// 横に倒したときの一覧
-await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 90 } })));
-await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
-await page.waitForTimeout(500);
-await shot("c7b_横の一覧");
-await page.mouse.click(60, 200);
-await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 0 } })));
+log.Warmのあとに戻した = { 名前: await lookName(), 重み: (await calls("w")).slice(-1) };
+// 戻るの操作で、一覧が閉じる（一覧へは戻らない）
+await page.evaluate(() => window.__sunglassesBack());
 await page.waitForTimeout(300);
-// 横に倒したとき: 字の出る所が回り、回している値が吹き出しに出る
+log.戻るで一覧が閉じた = { 一覧は閉じた: !(await looksOpen()), 撮る画面のまま: !(await page.locator("#camera").evaluate((el) => el.hidden)) };
+await closeLooks();
+// 横に倒したとき: 印と数字が、その場で向きを変える。写真の上には何も出ない
 await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 90 } })));
 await page.waitForTimeout(400);
+await cellOf("sun").click();
 await drag("#cam-ev .rg", 1, 40);
-log.横の吹き出し = { 見出し: await page.locator("#cam-bubble small").textContent(), 値: await page.locator("#cam-bubble b").textContent(), 出ている: await page.locator("#cam-bubble").getAttribute("class") };
 await shot("c8_横");
-log.横の回り = await page.evaluate(() => [".cam-pro-cell", "#cam-badge", ".cam-set"].map((s) => getComputedStyle(document.querySelector(s)).transform));
+log.横の回り = await page.evaluate(() => [".cam-pro-cell", ".cam-q", "#cam-back", ".cam-lenses .chip"].map((s) => getComputedStyle(document.querySelector(s)).transform));
+await openLooks();
+await shot("c8b_横の一覧");
+await closeLooks();
+await cellOf("ev").click();
 log.使っている書体 = await page.evaluate(() => [...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family + " " + f.weight));
-// ---- 拡大（2026-11-13）: 倍率の札、2 本の指でつまむ、撮った写真の切り抜き、開けないレンズからの戻り ----
+// ---- 焦点距離の列: 数字をたたいて拡大、2 本の指でつまむ、撮った写真の切り抜き、開けないレンズからの戻り ----
 await page.evaluate(() => window.dispatchEvent(new CustomEvent("sunglasses:orientation", { detail: { deg: 0 } })));
 await page.waitForTimeout(400);
 const chips = () => page.evaluate(() => [...document.querySelectorAll("#cam-lenses .chip")].map((c) => c.textContent + (c.classList.contains("is-on") ? "*" : "")));
-log.拡大 = { はじめの札: await chips() };
-await page.locator("#cam-lenses .cam-zoom", { hasText: "2×" }).click();
+log.拡大 = { はじめの数字: await chips() };
+await page.locator("#cam-lenses .cam-zoom", { hasText: "46" }).click();
 await page.waitForTimeout(200);
-log.拡大.二倍をたたく = { 札: await chips(), 呼び出し: (await calls("zoom")).slice(-1) };
+log.拡大.四十六をたたく = { 数字: await chips(), 呼び出し: (await calls("zoom")).slice(-1) };
 // 2 本の指でつまむ: 指のあいだを 100px → 150px に広げる（2 倍 → 3 倍）
 await page.evaluate(() => {
   const v = document.getElementById("cam-view"), r = v.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -337,7 +379,7 @@ await page.evaluate(() => {
   ev("pointerup", 11, cx - 50);
 });
 await page.waitForTimeout(300);
-log.拡大.つまんだあと = { 札: await chips(), 呼び出し: (await calls("zoom")).slice(-2), ピントの呼び出しが増えていない: (await calls("focus")).length };
+log.拡大.つまんだあと = { 数字: await chips(), 呼び出し: (await calls("zoom")).slice(-2), ピントの呼び出しが増えていない: (await calls("focus")).length };
 await shot("c9_拡大");
 log.拡大.画素数の字 = await page.locator("#cam-readout").textContent();
 // 画素数の字をたたく → レンズの情報が出る
@@ -355,43 +397,43 @@ log.拡大.撮った写真の切り抜き = await page.evaluate(async () => {
   const e = await getEdit("external_primary:77:1000");
   return e && e.params && e.params.crop;
 });
-// 望遠の札（開けないレンズ）をたたく → 元のレンズに戻り、札が消える
-await page.locator("#cam-lenses .chip", { hasText: "100mm" }).click();
+// 望遠の数字（開けないレンズ）をたたく → 元のレンズに戻り、数字が消える
+await page.locator("#cam-lenses .chip", { hasText: "100" }).click();
 await page.waitForTimeout(700);
-log.拡大.開けないレンズ = { 札: await chips(), 知らせ: await page.locator(".toast-text").last().textContent().catch(() => ""), 開いた順: (await calls("open")).slice(-2).map((c) => c[1]) };
+log.拡大.開けないレンズ = { 数字: await chips(), 知らせ: await page.locator(".toast-text").last().textContent().catch(() => ""), 開いた順: (await calls("open")).slice(-2).map((c) => c[1]) };
 await shot("c10_開けないレンズ");
-// ---- 写ルンですのカメラ（2026-11-15）----
+// ---- 写ルンですのカメラ ----
 {
   const pickCam = async (name) => {
-    await page.click("#cam-core");
-    await page.waitForTimeout(300);
-    await page.locator(".cam-look", { hasText: name }).click();
+    await openLooks();
+    await page.locator(".cam-kind", { hasText: name }).click();
     await page.waitForTimeout(900);
+  };
+  const frameRow = async () => {
+    await page.click("#cam-gear");
+    await page.waitForTimeout(200);
+    const t = await page.locator("#cam-sets .cam-srow").first().innerText();
+    await page.click("#cam-sets .cam-done");
+    return t.replace(/\s+/g, " ");
   };
   await clear();
   await pickCam("写ルンです");
+  await shot("d02_写ルンです_一覧");
   log.写ルンです = {
-    名前: await page.locator("#cam-core b").textContent(), 札: await chips(), 枠: await page.evaluate(() => document.getElementById("cam-frame").dataset.frame),
-    倍率: (await calls("zoom")).slice(-1)[0], 重み: (await calls("w")).slice(-1)[0],
-    枠の字: await page.locator("#cam-set-frame b").textContent(), 送った手動の値: (await calls("manual")).slice(-1)[0], 送った露出: (await calls("ev")).slice(-1)[0],
+    名前: await lookName(), 一覧の中: await page.locator("#cam-looks").innerText(), 数字: await chips(), 枠: await page.evaluate(() => document.getElementById("cam-frame").dataset.frame),
+    倍率: (await calls("zoom")).slice(-1)[0], 重み: (await calls("w")).slice(-1)[0], 送った手動の値: (await calls("manual")).slice(-1)[0], 送った露出: (await calls("ev")).slice(-1)[0],
     つまみは隠れた: await page.evaluate(() => getComputedStyle(document.getElementById("cam-pro")).visibility === "hidden" && getComputedStyle(document.getElementById("cam-ev")).visibility === "hidden"),
-    決まりの値: await page.locator("#cam-fixed").innerText(),
   };
-  await page.click("#cam-set-frame");
-  await page.waitForTimeout(300);
-  log.写ルンです.枠をたたいたあと = [await page.locator("#cam-set-frame b").textContent(), await page.evaluate(() => document.getElementById("cam-frame").dataset.frame)];
+  await closeLooks();
+  log.写ルンです.決まりの値 = await page.locator("#cam-fixed").innerText();
+  log.写ルンです.設定の枠の行 = await frameRow();
   await page.waitForTimeout(1200);
   await shot("d01_写ルンです");
-  await page.click("#cam-core");
-  await page.waitForTimeout(300);
-  await shot("d02_写ルンです_一覧");
-  await page.click("#cam-core");
-  await page.waitForTimeout(200);
   await page.evaluate(() => (window.__bridgeVersion = 6));
-  // フラッシュは上の設定の列で選ぶ（どのカメラでも同じ）
+  // フラッシュは上の印で選ぶ（どのカメラでも同じ）
   await page.click("#cam-set-flash");
   await page.waitForTimeout(300);
-  log.写ルンです.フラッシュをたくにした = [await page.locator("#cam-set-flash b").textContent(), await page.locator("#cam-fixed-note").textContent()];
+  log.写ルンです.フラッシュをたくにした = [await page.locator("#cam-set-flash").getAttribute("class"), await page.locator("#cam-fixed-note").textContent()];
   await shot("d02b_写ルンです_フラッシュ");
   await clear();
   await page.click("#cam-shutter");
@@ -401,9 +443,10 @@ await shot("c10_開けないレンズ");
     const e = await getEdit("external_primary:78:1");
     return e && e.params && { core: e.params.core, exposure: e.params.exposure, flash: e.params.flash, crop: e.params.crop };
   }) };
-  await pickCam("サングラス");
-  log.写ルンです.戻したあと = { 名前: await page.locator("#cam-core b").textContent(), 札: await chips(), 枠: await page.evaluate(() => document.getElementById("cam-frame").dataset.frame), 倍率: (await calls("zoom")).slice(-1)[0],
-    枠の字: await page.locator("#cam-set-frame b").textContent(), つまみが出た: await page.evaluate(() => getComputedStyle(document.getElementById("cam-pro")).visibility === "visible" && document.getElementById("cam-fixed").hidden) };
+  await pickCam("Sunglasses");
+  await closeLooks();
+  log.写ルンです.戻したあと = { 名前: await lookName(), 数字: await chips(), 枠: await page.evaluate(() => document.getElementById("cam-frame").dataset.frame), 倍率: (await calls("zoom")).slice(-1)[0],
+    設定の枠の行: await frameRow(), つまみが出た: await page.evaluate(() => getComputedStyle(document.getElementById("cam-pro")).visibility === "visible" && document.getElementById("cam-fixed").hidden) };
   await shot("d03_サングラスへ戻した");
   // サングラス（Cinema・Aftersun）でもフラッシュをたける
   const caps = async () => (await page.evaluate(() => window.__calls.map((c) => c[0]))).filter((n) => n.startsWith("capture"));
@@ -417,7 +460,16 @@ await shot("c10_開けないレンズ");
   await clear();
   await page.click("#cam-shutter");
   await page.waitForTimeout(1500);
-  log.写ルンです.サングラスでオフ = [await page.locator("#cam-set-flash b").textContent(), await caps()];
+  log.写ルンです.サングラスでオフ = [await page.locator("#cam-set-flash").getAttribute("class"), await caps()];
+  // タイマー: 残りの秒は、シャッターの白い丸の中に出る
+  await page.click("#cam-set-timer");
+  await clear();
+  await page.click("#cam-shutter");
+  await page.waitForTimeout(1500);
+  log.タイマー = { 丸の中の字: await page.locator("#cam-shutter-core").textContent(), まだ撮っていない: (await caps()).length === 0 };
+  await shot("d04_タイマー");
+  await page.waitForTimeout(2600);
+  log.タイマー.終わったあと = { 丸の中の字: await page.locator("#cam-shutter-core").textContent(), 撮った: await caps() };
 }
 fs.writeFileSync(path.join(outDir, "記録.json"), JSON.stringify({ log, errors }, null, 1));
 console.log(JSON.stringify({ log, errors }, null, 1));

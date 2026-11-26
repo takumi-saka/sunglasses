@@ -2,14 +2,15 @@
 // 曲線の値は 0〜255 の点の並び（端の 0 と 255 は自動で入る。パソコンの道具の make_curve と同じ）
 import { pchip } from "../engine/color.js";
 import { haptic } from "./bridge.js";
+import { L } from "./knobs.js";
 import { h } from "./ui.js";
 
-const CH = [["rgb", "RGB", "#ece6da"], ["r", "赤", "#e06a5e"], ["g", "緑", "#6cbf6a"], ["b", "青", "#6a95e0"]];
+const CH = [["rgb", "RGB", "#fff"], ["r", L("Red", "レッド"), "#e58a80"], ["g", L("Green", "グリーン"), "#8fd08d"], ["b", L("Blue", "ブルー"), "#8fb0ea"]];
 
 export function curveEditor(getCurve, onChange, onCommit) {
   let ch = "rgb", drag = -1, lastTap = 0;
   const cv = h("canvas", { class: "curve-cv" });
-  const tabs = h("div", { class: "chips" });
+  const tabs = h("div", { class: "ed-words" });
   const el = h("div", { class: "curve" }, tabs, cv);
 
   function pts() {
@@ -21,7 +22,7 @@ export function curveEditor(getCurve, onChange, onCommit) {
     cv.height = Math.round(r.width * dpr * 0.62);
     const c = cv.getContext("2d"), W = cv.width, H = cv.height;
     c.clearRect(0, 0, W, H);
-    c.strokeStyle = "#262626";
+    c.strokeStyle = "rgba(255,255,255,.1)";
     c.lineWidth = dpr;
     for (let i = 1; i < 4; i++) {
       c.beginPath();
@@ -31,14 +32,14 @@ export function curveEditor(getCurve, onChange, onCommit) {
       c.lineTo(W, (H * i) / 4);
       c.stroke();
     }
-    c.strokeStyle = "#3a3a3a";
+    c.strokeStyle = "rgba(255,255,255,.22)";
     c.beginPath();
     c.moveTo(0, H);
     c.lineTo(W, 0);
     c.stroke();
     const color = CH.find((x) => x[0] === ch)[2], curve = pchip(pts(), 256);
     c.strokeStyle = color;
-    c.lineWidth = 2 * dpr;
+    c.lineWidth = 1.5 * dpr;
     c.beginPath();
     for (let i = 0; i < 256; i++) {
       const x = (i / 255) * W, y = H - curve[i] * H;
@@ -54,7 +55,7 @@ export function curveEditor(getCurve, onChange, onCommit) {
   }
   function renderTabs() {
     tabs.replaceChildren(...CH.map(([k, name, color]) => h("button", {
-      class: "chip" + (k === ch ? " is-on" : "") + ((getCurve()[k] || []).length ? " is-changed" : ""),
+      class: "ed-word" + (k === ch ? " is-on" : "") + ((getCurve()[k] || []).length ? " is-changed" : ""),
       style: { "--chip": color }, onClick: () => ((ch = k), renderTabs(), draw()),
     }, name)));
   }

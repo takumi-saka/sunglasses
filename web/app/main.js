@@ -78,6 +78,7 @@ async function boot() {
       return true;
     }
     if (screen === "camera") {
+      if (camera.closePanel()) return true;
       showLibrary();
       return true;
     }

@@ -2,17 +2,16 @@
 """アプリに同梱する書体を、アプリで使う字だけに小分けする（2026-11-06）。
 
 - 字: Zen Kaku Gothic New（400・500・700）→ web/fonts/sg-gothic-{400,500,700}.woff2（書体の名前は SG Gothic）
-- 数字: IBM Plex Mono（400・500・600）→ web/fonts/sg-mono-{400,500,600}.woff2（書体の名前は SG Mono）
-  IBM Plex は「Plex」の名前が予約されている（SIL OFL 1.1）。小分けは手を加えたことになるので、名前を変えて同梱する。
-  Zen Kaku Gothic New に予約された名前は無いが、そろえて名前を変える。どちらもライセンスの文を web/fonts/ に置く。
+- 英字と数字: Jost（太さを自由に変えられる 1 ファイル）→ web/fonts/sg-latin.woff2（書体の名前は SG Latin。2026-11-26 に IBM Plex Mono から替えた）
+  どちらも予約された名前は無いが、小分けは手を加えたことになるので、名前を変えて同梱する。ライセンスの文を web/fonts/ に置く。
 - 使う字は、web/ の html・js・css と、APK の Java（画面に出す知らせ）から集める。ひらがな・カタカナは全部入れる。
   画面に新しい字を足したら、もう一度回す（入っていない字は、端末の書体で出る）。
 
 使い方（fontTools と brotli が要る）:
   python dev/subset_fonts.py <元の ttf と OFL の txt を置いたフォルダ>
   元のファイル: ZenKakuGothicNew-{Regular,Medium,Bold}.ttf・OFL_ZenKakuGothicNew.txt、
-               IBMPlexMono-{Regular,Medium,SemiBold}.ttf・OFL_IBMPlexMono.txt
-               （github.com/google/fonts の ofl/zenkakugothicnew と ofl/ibmplexmono）
+               Jost-VF.ttf（元の名前は Jost[wght].ttf）・OFL_Jost.txt
+               （github.com/google/fonts の ofl/zenkakugothicnew と ofl/jost）
 """
 import pathlib
 import shutil
@@ -24,13 +23,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "web" / "fonts"
 
 GOTHIC = [("Regular", 400, "Regular"), ("Medium", 500, "Medium"), ("Bold", 700, "Bold")]
-MONO = [("Regular", 400, "Regular"), ("Medium", 500, "Medium"), ("SemiBold", 600, "SemiBold")]
 
 ASCII = "".join(chr(c) for c in range(0x20, 0x7F))
 # 画面に出しうる記号（文の中の記号・矢印・単位）
 SYMBOLS = "　、。・，．：；？！゛゜´｀¨＾￣＿ヽヾゝゞ〃仝々〆〇ー―‐／＼～∥｜…‥‘’“”（）〔〕［］｛｝〈〉《》「」『』【】＋－±×÷＝≠＜＞≦≧∞∴♂♀°′″℃￥＄￠￡％＃＆＊＠§☆★○●◎◇◆□■△▲▽▼※〒→←↑↓〓−–—•·⁄"
 KANA = "".join(chr(c) for c in range(0x3041, 0x3097)) + "".join(chr(c) for c in range(0x30A1, 0x30FB)) + "ー"
-MONO_EXTRA = "−×±°·…•→←↑↓∞′″’“”"
+LATIN_EXTRA = "−×±°·…•∞’“”＋"
 
 
 def used_chars():
@@ -80,12 +78,32 @@ def make(src_dir, prefix, family, faces, chars, ofl_name):
     shutil.copy(src_dir / ofl_name, OUT / ofl_name.replace("OFL_", "OFL-"))
 
 
+def make_latin(src_dir):
+    """Jost は太さの軸を残したまま、英字・数字・少しの記号だけにする。"""
+    opts = subset.Options()
+    opts.flavor = "woff2"
+    opts.layout_features = ["*"]
+    opts.hinting = False
+    opts.name_IDs = ["*"]
+    opts.name_languages = ["*"]
+    opts.notdef_outline = True
+    font = subset.load_font(str(src_dir / "Jost-VF.ttf"), opts)
+    sub = subset.Subsetter(opts)
+    sub.populate(unicodes=sorted({ord(c) for c in set(ASCII) | set(LATIN_EXTRA)}))
+    sub.subset(font)
+    rename(font, "SG Latin", "Regular")
+    out = OUT / "sg-latin.woff2"
+    subset.save_font(font, str(out), opts)
+    print(out.name, out.stat().st_size, "バイト")
+    shutil.copy(src_dir / "OFL_Jost.txt", OUT / "OFL-Jost.txt")
+
+
 def main():
     src_dir = pathlib.Path(sys.argv[1])
     OUT.mkdir(parents=True, exist_ok=True)
     gothic = set(ASCII) | set(SYMBOLS) | set(KANA) | used_chars()
     make(src_dir, "ZenKakuGothicNew", "SG Gothic", GOTHIC, gothic, "OFL_ZenKakuGothicNew.txt")
-    make(src_dir, "IBMPlexMono", "SG Mono", MONO, set(ASCII) | set(MONO_EXTRA), "OFL_IBMPlexMono.txt")
+    make_latin(src_dir)
 
 
 if __name__ == "__main__":

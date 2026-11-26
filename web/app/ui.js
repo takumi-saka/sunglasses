@@ -1,6 +1,5 @@
 // 画面の部品（2026-11-05）: 小さな DOM の作り方、つまみ、知らせ、下から出る板
 import { haptic } from "./bridge.js";
-import { water } from "./water.js";
 
 export function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -17,32 +16,23 @@ export function h(tag, attrs = {}, ...kids) {
 }
 
 // ---------- つまみ ----------
-// 指を動かした分だけ値が変わる（置いた所へ飛ばない）。指を下へずらすと 4 分の 1 の速さ（細かく合わせる）。
+// 細い目盛りの上を、麦わら色の印が動く。指を動かした分だけ値が変わる（置いた所へ飛ばない）。指を下へずらすと 4 分の 1 の速さ（細かく合わせる）。
 // 初期値の近くで手応えとともに止まる。2 回たたくと初期値に戻る。
-export function slider({ label, min, max, step = 1, value, def = 0, fmt, track = "", onInput, onCommit, onReset = null, snaps = [], extra = null }) {
+// row: 1 行に収める小さな形（名前・細い線・値）。目盛りは出さない。
+export function slider({ label, min, max, step = 1, value, def = 0, fmt, track = "", onInput, onCommit, onReset = null, snaps = [], extra = null, row = false }) {
   let v = value, dragging = false, startX = 0, startY = 0, startV = 0, fine = false, moved = false, lastTap = 0, inSnap = false;
-  const valEl = h("span", { class: "sl-val" });
-  const dot = h("span", { class: "sl-dot" });
-  const fill = h("div", { class: "sl-fill" });
+  const valEl = h("span", { class: "sl-val num" });
   const thumb = h("div", { class: "sl-thumb" });
-  const ticks = h("div", { class: "sl-ticks" });
-  const trackEl = h("div", { class: `sl-track ${track ? "sl-track-" + track : ""}` }, ticks, fill, h("div", { class: "sl-zero" }), thumb);
+  const ticks = h("div", { class: "sl-ticks" }, row ? [] : Array.from({ length: 61 }, (_, i) => h("i", { class: i % 10 ? "" : "is-major", style: { left: (i / 60) * 100 + "%" } })));
+  const trackEl = h("div", { class: `sl-track ${track ? "sl-track-" + track : ""}` }, ticks, h("div", { class: "sl-zero" }), thumb);
   const hint = h("span", { class: "sl-hint" }, "細かく");
-  const el = h("div", { class: "sl" }, h("div", { class: "sl-head" }, dot, h("span", { class: "sl-label" }, label), extra, hint, valEl), trackEl);
+  const el = h("div", { class: "sl" + (row ? " sl-row" : "") }, h("div", { class: "sl-head" }, h("span", { class: "sl-label" }, label), extra, hint, valEl), trackEl);
   const stops = [def, ...snaps];
   const span = max - min, zeroAt = (def - min) / span;
   trackEl.style.setProperty("--zero", zeroAt * 100 + "%");
 
-  // つまむ所は水滴。動かすと、水が遅れてゆれる
-  const drop = water(thumb, { lens: true, press: false });
-  let lastT = null;
   function render() {
-    const t = (v - min) / span;
-    if (lastT !== null && t !== lastT) drop.slosh((t - lastT) * 260);
-    lastT = t;
-    thumb.style.left = t * 100 + "%";
-    fill.style.left = Math.min(t, zeroAt) * 100 + "%";
-    fill.style.width = Math.abs(t - zeroAt) * 100 + "%";
+    thumb.style.left = ((v - min) / span) * 100 + "%";
     valEl.textContent = fmt ? fmt(v) : String(v);
     el.classList.toggle("is-changed", Math.abs(v - def) > 1e-9);
   }
@@ -225,15 +215,13 @@ export function ring({ label, stops, index = 0, px = 16, fmt, extra = null, onIn
 }
 
 // ---------- 知らせ ----------
-let toastEl = null, toastTimer = 0, toastWater = null;
+let toastEl = null, toastTimer = 0;
 export function toast(text, actions = [], ms = 4000) {
   if (!toastEl) {
     toastEl = h("div", { class: "toast" });
     document.body.append(toastEl);
-    toastWater = water(toastEl, { kind: "solid", radius: 24, press: false });
   }
   toastEl.replaceChildren(h("span", { class: "toast-text" }, text), ...actions.map(([t, fn]) => h("button", { class: "toast-btn", onClick: fn }, t)));
-  if (toastWater.blob) toastEl.prepend(toastWater.blob.el); // 中身を入れ替えると水が外れるので、戻す
   toastEl.classList.add("is-on");
   clearTimeout(toastTimer);
   if (ms) toastTimer = setTimeout(() => toastEl.classList.remove("is-on"), ms);
@@ -246,8 +234,6 @@ export function sheet(title, body, { onClose } = {}) {
   const back = h("div", { class: "sheet-back", onClick: () => closeSheet() });
   const el = h("div", { class: "sheet", role: "dialog" }, h("div", { class: "sheet-in" }, h("div", { class: "sheet-grip" }), h("div", { class: "sheet-title" }, title), body));
   document.body.append(back, el);
-  // 板は透けない濃い水（透かすと、後ろの字と重なって読めない）
-  water(el, { kind: "solid", radius: 28, press: false });
   requestAnimationFrame(() => {
     back.classList.add("is-on");
     el.classList.add("is-on");

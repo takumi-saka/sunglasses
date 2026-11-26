@@ -1,14 +1,16 @@
-// 一覧の画面（2026-11-05）。RAW だけを新しい順に、撮った日ごとに並べる。小さな画にも核をかける。
+// 一覧の画面（2026-11-05。見た目は 2026-11-26 に作り直し）。RAW だけを新しい順に並べる。いちばん新しい 1 枚を大きく、あとは月ごとに 3 列。小さな画にも核をかける。
 import * as bridge from "./bridge.js";
 import { deleteEdit, editedKeys, getEdit } from "./store.js";
 import { h, toast } from "./ui.js";
 import { mergeParams } from "./editor.js";
-import { water } from "./water.js";
+import { L, LANG } from "./knobs.js";
 
 const THUMB_CACHE = "sg-thumbs-v2"; // v2: RAW から作る形に変えた（2026-11-05）
 const LONG_PRESS_MS = 400; // Android の長押しの標準（ViewConfiguration.getLongPressTimeout の既定）
 const TOUCH_SLOP = 8; // Android のタッチの許し幅の標準（8dp。ページの 1px はおよそ 1dp）
 const AUTO_CORE = "cinema"; // 2026-11-10 夜 直していない写真は Cinema（映画の見た目の核）で見せる。前は aftersun2
+const HERO_SIZE = 1024; // 大きく出す 1 枚の画の長い辺（ほかは 384）
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const AUTO_SUN = 0; // Cinema の Sun Level（Aftersun を足す量）のはじめの値
 
 export class Library {
@@ -26,13 +28,13 @@ export class Library {
     this.queue = [];
     this.busy = false;
     document.getElementById("lib-open").onclick = () => this.openFile();
-    // 写真の上に浮かぶ所は、水の部品にする（2026-11-13）
-    water(document.getElementById("lib-brand"));
-    water(document.getElementById("lib-open"));
-    water(document.getElementById("lib-camera"));
-    water(document.getElementById("lib-camera-core"), { kind: "white" });
-    water(document.getElementById("lib-select"));
-    // 写真を選んでまとめて消す（長押しで選ぶ形に入る。2026-11-06）
+    // 写真を選んでまとめて消す（長押しか、右上の Select で選ぶ形に入る。2026-11-06）
+    const selStart = document.getElementById("lib-sel-start");
+    selStart.textContent = L("Select", "選択");
+    selStart.onclick = () => !this.selecting && this.startSelect();
+    document.getElementById("lib-sel-cancel").textContent = L("Cancel", "キャンセル");
+    document.getElementById("lib-sel-all").textContent = L("All", "すべて選択");
+    document.getElementById("lib-sel-delete").textContent = L("Delete", "削除");
     this.selecting = false;
     this.selected = new Set();
     this.selBar = document.getElementById("lib-select");
@@ -85,27 +87,31 @@ export class Library {
     const items = all;
     this.items = items;
     this.edited = await editedKeys();
-    this.count.textContent = items.length ? `RAW ${items.length} 枚` : "";
+    this.count.textContent = items.length ? `${items.length} RAW` : "";
+    document.getElementById("lib-sel-start").disabled = !items.length;
+    // 月ごとにまとめる（新しい順）
     const groups = new Map();
     for (const it of items) {
       const d = new Date(it.dateTaken || 0);
-      const k = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const k = `${d.getFullYear()}-${d.getMonth()}`;
       if (!groups.has(k)) groups.set(k, { d, arr: [] });
       groups.get(k).arr.push(it);
     }
     const frag = [];
-    const num = (v) => h("span", { class: "num" }, String(v));
-    if (this.imported.length) {
-      frag.push(h("h3", { class: "day" }, h("span", { class: "day-date" }, "読み込んだ写真"), h("span", { class: "day-n" }, num(this.imported.length), "枚")));
-      frag.push(h("div", { class: "grid" }, this.imported.map((it) => this.tile(it))));
-    }
+    // 見出し: 左に月（July 2024）、右にその月の枚数
+    const head = (name, n) => h("h3", { class: "month" }, h("span", {}, name), h("span", { class: "month-n num" }, String(n)));
+    const grid = (arr) => h("div", { class: "grid" }, arr.map((it) => this.tile(it)));
+    if (this.imported.length) frag.push(head(L("Imported", "読み込んだ写真"), this.imported.length), grid(this.imported));
+    let first = true;
     for (const { d, arr } of groups.values()) {
-      // 日付の見出し: 2024年8月3日 土曜日 と、その日の枚数
-      frag.push(h("h3", { class: "day" },
-        h("span", { class: "day-date" }, num(d.getFullYear()), "年", num(d.getMonth() + 1), "月", num(d.getDate()), "日",
-          h("span", { class: "day-wk" }, "日月火水木金土"[d.getDay()] + "曜日")),
-        h("span", { class: "day-n" }, num(arr.length), "枚")));
-      frag.push(h("div", { class: "grid" }, arr.map((it) => this.tile(it))));
+      let rest = arr;
+      if (first) {
+        // いちばん新しい 1 枚は、大きく出す
+        frag.push(this.tile(arr[0], true));
+        rest = arr.slice(1);
+        first = false;
+      }
+      if (rest.length) frag.push(head(LANG === "ja" ? `${d.getFullYear()}年${d.getMonth() + 1}月` : `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, arr.length), grid(rest));
     }
     if (!items.length && !this.imported.length && perm !== "none") {
       frag.push(h("div", { class: "empty" }, h("p", {}, "RAW（DNG）の写真が見つかりませんでした。"),
@@ -131,18 +137,19 @@ export class Library {
         h("button", { class: "banner-btn", onClick: () => bridge.requestPermission() }, "選び直す"),
         h("button", { class: "banner-btn sub", onClick: () => bridge.openAppSettings() }, "設定を開く")));
     } else if (!bridge.inApp() && perm === "none") {
-      b.push(h("div", { class: "banner" }, h("span", {}, "スマホのアプリで開くと、写真の一覧が出ます。ここでは「読み込み」で試せます。")));
+      b.push(h("div", { class: "banner" }, h("span", {}, "スマホのアプリで開くと、写真の一覧が出ます。ここでは、右上の矢印の印から写真を読み込んで試せます。")));
     }
     this.banner.replaceChildren(...b);
   }
 
-  tile(it) {
+  // big: いちばん新しい 1 枚を大きく出す時
+  tile(it, big = false) {
     const key = bridge.keyOf(it);
     // まずスマホの小さな画（核なし）をすぐ出し、RAW から核をかけた画ができたら差し替える
     const img = h("img", { class: "thumb", alt: "", decoding: "async", loading: "lazy", draggable: "false", ...(it.token ? {} : { src: bridge.thumbUrl(it) }) });
     img.onload = () => el.classList.add("is-ready");
     const el = h("button", {
-      class: "tile" + (this.edited.has(key) ? " is-edited" : "") + (this.selected.has(key) ? " is-selected" : ""),
+      class: "tile" + (big ? " is-hero" : "") + (this.edited.has(key) ? " is-edited" : "") + (this.selected.has(key) ? " is-selected" : ""),
       onClick: () => {
         if (el._long) return (el._long = false);
         if (this.selecting) this.toggle(el);
@@ -152,6 +159,7 @@ export class Library {
     el._item = it;
     el._img = img;
     el._key = key;
+    el._big = big;
     // 長押し: 押している時間と、スマホが出す長押しの合図（contextmenu。Android の設定どおりに出る）の、早い方で選ぶ形に入る。
     // 値は Android の標準にそろえる（本人 11/6）: 押している時間 400 ミリ秒（ViewConfiguration の長押しの標準）、
     // 指の動きの許し幅 8dp（タッチの許し幅の標準。これを超えると一覧のスクロールに切り替わる）
@@ -212,7 +220,7 @@ export class Library {
   }
   renderSelect() {
     const n = this.selected.size;
-    document.getElementById("lib-sel-count").textContent = n ? `${n}枚を選択` : "写真を選んでください";
+    document.getElementById("lib-sel-count").textContent = n ? L(`${n} selected`, `${n}枚を選択`) : L("Select photos", "写真を選択");
     document.getElementById("lib-sel-delete").disabled = !n;
   }
   // 選んだ写真を消す。Android の確認が1回出て、許可するとまとめて消える（元の RAW がスマホから消える）
@@ -258,7 +266,7 @@ export class Library {
       const el = this.queue.shift();
       if (!el.isConnected) continue;
       try {
-        el._img.src = await this.thumb(el._item);
+        el._img.src = await this.thumb(el._item, el._big);
         el.classList.add("is-ready", "is-cored");
       } catch {
         el.classList.add("is-failed");
@@ -268,7 +276,7 @@ export class Library {
     this.busy = false;
   }
 
-  async thumb(it) {
+  async thumb(it, big = false) {
     const key = bridge.keyOf(it);
     const edit = this.edited.has(key) ? await getEdit(key) : null;
     const ep = (edit && edit.params) || {};
@@ -277,6 +285,7 @@ export class Library {
     // 編集した写真は、つまみの値も小さな画にかける。覚えておく画の名前には、編集を保存した時刻を付ける（編集し直したら作り直す）
     const params = edit && edit.params ? mergeParams(edit.params) : null;
     if (params) ck += `:e${edit.updatedAt || 0}`;
+    if (big) ck += ":L";
     if (this.urls.has(ck)) return this.urls.get(ck);
     const req = new Request(new URL(`thumb/${encodeURIComponent(ck)}.jpg`, document.baseURI));
     let cache = null;
@@ -295,7 +304,7 @@ export class Library {
     if (!res.ok) throw new Error("raw");
     let t;
     try {
-      t = await this.engine.decodeThumb(await res.arrayBuffer(), 384);
+      t = await this.engine.decodeThumb(await res.arrayBuffer(), big ? HERO_SIZE : 384);
     } catch (e) {
       // RAW ではない写真（JPEG など）は、写真そのものを小さな画にする
       if (it.token && !/dng$/i.test(it.name || "")) return bridge.mediaUrl(it);

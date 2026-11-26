@@ -17,9 +17,8 @@ import * as UT from "../engine/utsurun.js";
 import * as bridge from "./bridge.js";
 import { pref, setEdit } from "./store.js";
 import { h, ring, sheet, toast } from "./ui.js";
-import { water } from "./water.js";
 
-const FRAMES = [["1.85", "1.85:1"], ["thirds", "三分割"], ["off", "オフ"]];
+const FRAMES = [["1.85", "1.85:1"], ["thirds", "グリッド"], ["off", "オフ"]];
 const SETTINGS = {
   frame: FRAMES.map((f) => f[0]),
   timer: [0, 3, 10],
@@ -30,7 +29,6 @@ const SETTINGS = {
 const log2 = (x) => Math.log(x) / Math.LN2;
 // 拡大（2026-11-13）。倍率の札と、つまんで拡大できる上の倍率。RAW を切り抜く拡大なので、2 倍で画素は 4 分の 1、4 倍で 16 分の 1 になる
 const ZOOM_STEPS = [1, 2, 3], ZOOM_LIMIT = 4;
-const onOff = (b) => (b ? "オン" : "オフ");
 // 右下のルックで、たたくたびに替わる順（2026-11-06）。名前は looks.json の核の名前を使う
 // 2026-11-10 型のフィルム（deepblue＝Aftersun Blue、aqua＝Aftersun Aqua）を Aftersun の次に足した
 // 2026-11-10 夜 aftersun3（Aftersun のコマを測った数に合わせた形）を足し、名前を Aftersun にした。前の Aftersun（aftersun2）は「Aftersun（前の版）」
@@ -50,9 +48,10 @@ const ISO_FULL = [25, 50, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600];
 const WB_PRESETS = [["daylight", "晴れ"], ["cloudy", "くもり"], ["shade", "日陰"], ["incandescent", "電球"], ["fluorescent", "蛍光灯"]];
 const FOCUS_M = [0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1, 1.5, 2, 3, 5, 10, Infinity];
 const FOCUS_MAJOR = [0.1, 0.2, 0.5, 1, 2, 5, Infinity];
-const PRO = [["s", "S", "シャッター速度"], ["iso", "ISO", "ISO感度"], ["wb", "WB", "ホワイトバランス"], ["focus", "F", "ピント"], ["af", "AF", "AF"]];
+// 2026-11-26 AF（連続・1回）は設定の表へ移した。数字の列は、この 4 つと、露出・Sun Level
+const PRO = [["s", "S", "シャッター速度"], ["iso", "ISO", "ISO感度"], ["wb", "WB", "ホワイトバランス"], ["focus", "ピント", "ピント"]];
 const near = (a, b) => Math.abs(log2(a / b)) < 0.02;
-const fmtS = (s) => (s >= 0.3 ? String(+s.toFixed(1)) + "秒" : "1/" + Math.round(1 / s));
+const fmtS = (s) => (s >= 0.3 ? String(+s.toFixed(1)) + "s" : "1/" + Math.round(1 / s));
 const fmtF = (m) => (m === Infinity ? "∞" : m < 1 ? Math.round(m * 100) + "cm" : String(+m.toFixed(1)) + "m");
 const fmtEv = (v) => (v > 0.04 ? "+" : v < -0.04 ? "−" : "") + Math.abs(v).toFixed(1);
 const fmtWb = (w) => (typeof w === "number" ? w + "K" : (WB_PRESETS.find((p) => p[0] === w) || [0, "自動"])[1]);
@@ -131,20 +130,16 @@ export class Camera {
     const $ = (id) => document.getElementById(id);
     this.els = {
       frame: $("cam-frame"), grid: $("cam-grid"), level: $("cam-level"), ring: $("cam-ring"), badge: $("cam-badge"),
-      count: $("cam-count"), readout: $("cam-readout"), hist: $("cam-hist"), thumb: $("cam-thumb"), shutter: $("cam-shutter"),
-      coreBtn: $("cam-core"), looks: $("cam-looks"), ev: $("cam-ev"), pro: $("cam-pro"), lenses: $("cam-lenses"), msg: $("cam-msg"), bubble: $("cam-bubble"),
+      count: $("cam-count"), readout: $("cam-readout"), hist: $("cam-hist"), thumb: $("cam-thumb"), shutter: $("cam-shutter"), shutterCore: $("cam-shutter-core"),
+      coreBtn: $("cam-core"), looks: $("cam-looks"), sets: $("cam-sets"), under: $("cam-under"), gear: $("cam-gear"), amb: $("cam-amb"), ambCv: $("cam-amb-cv"),
+      ev: $("cam-ev"), pro: $("cam-pro"), lenses: $("cam-lenses"), msg: $("cam-msg"),
     };
     this.els.readout.addEventListener("click", () => this.lensInfo());
-    // 水の部品（2026-11-13）。撮る画面は、透けない濃い水（映像には何も重ねない）
-    const solid = { kind: "solid" };
-    water($("cam-back"), solid);
-    // ガラスにするのは、操作の入口だけ（戻る・倍率・シャッター・ルック）。上の設定・数字・目盛りはガラスにしない（本人 11/13）
-    water($("cam-lens-box"), { ...solid, press: false });
-    water(this.els.shutter, solid);
-    water($("cam-shutter-core"), { kind: "white" });
-    water(this.els.coreBtn, solid);
     $("cam-back").onclick = () => this.onBack();
-    for (const key of Object.keys(SETTINGS)) this.wheel($("cam-set-" + (key === "autoJpeg" ? "jpeg" : key)), key);
+    // 上の印: フラッシュは入り切り、タイマーはたたくたびに オフ → 3 秒 → 10 秒
+    $("cam-set-flash").onclick = () => this.setSetting("flash", !this.settings.flash);
+    $("cam-set-timer").onclick = () => this.setSetting("timer", SETTINGS.timer[(SETTINGS.timer.indexOf(this.settings.timer) + 1) % SETTINGS.timer.length]);
+    this.els.gear.onclick = () => this.toggleSets();
     this.els.shutter.onclick = () => this.shoot();
     this.els.thumb.onclick = () => this.shots[0] && this.onOpenItem(this.shots[0].item, this.shots[0].url);
     this.lookButton();
@@ -153,7 +148,7 @@ export class Camera {
     this.renderSettings();
   }
 
-  // 右下のルック: たたくとルックの一覧が出る（名前をたたいて選ぶ）、長押ししている間だけ、ルックをかけない素の画
+  // 上のルックの名前: たたくと、写真の下にルックの一覧が出る。長押ししている間だけ、ルックをかけない素の画
   lookButton() {
     const btn = this.els.coreBtn;
     let timer = 0, holding = false;
@@ -180,106 +175,121 @@ export class Camera {
     btn.addEventListener("pointercancel", () => up(false));
     btn.addEventListener("pointerleave", () => holding && up(false));
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
-    // 一覧の外（写真の上）をたたいたら閉じる。写真をたたく操作（ピント・明るさ）には流さない
-    const looks = this.els.looks;
-    for (const t of ["pointerdown", "pointermove", "pointerup"]) looks.addEventListener(t, (e) => e.stopPropagation());
-    looks.addEventListener("click", (e) => e.target === looks && this.toggleLooks(false));
   }
 
   familyName(id) {
     return (this.engine.cores && this.engine.cores.find((c) => c.id === id) || {}).name || FAMILY_NAMES[id];
   }
 
-  // ルックの一覧（写真の上に、選ぶ間だけ出す）。いまのルックに印
+  // ルックの一覧（写真の下の、数字の所に出す。写真は隠さない）。選んでいるルックに白い枠。シャッターは残るので、そのまま撮れる
   toggleLooks(open = this.els.looks.hidden) {
     const el = this.els.looks;
-    if (!open) {
-      el.hidden = true;
-      return;
+    if (open) this.toggleSets(false);
+    this.els.under.classList.toggle("is-looks", open);
+    this.els.coreBtn.classList.toggle("is-open", open);
+    el.hidden = !open;
+    if (!open) return;
+    const kind = (on, label, fn) => h("button", { class: "cam-kind" + (on ? " is-on" : ""), onClick: fn }, label);
+    const tile = (id, on, fn) => h("button", { class: "cam-look rot" + (on ? " is-on" : ""), "data-look": id, onClick: fn },
+      h("canvas", { class: "cam-look-cv", width: 48, height: 48 }), h("span", {}, id === "cinema" ? "Cinema" : this.familyName(id).replace(/^Aftersun (?=.)/, "")));
+    el.replaceChildren(
+      h("div", { class: "cam-phead" }, kind(!this.film, "Sunglasses", () => this.setFilm(false)), kind(this.film, "写ルンです", () => this.setFilm(true)),
+        h("button", { class: "cam-done", onClick: () => this.toggleLooks(false) }, "完了")),
+      this.film ? h("p", { class: "cam-looks-note" }, "写ルンですの写りで撮ります。ルックは選びません。")
+        : h("div", { class: "cam-look-row" },
+          tile("cinema", this.cinema, () => this.setLook(!this.cinema, SOLO_CORES.includes(this.sun) ? null : this.sun)),
+          // 足す Aftersun と、単独の Warm。選んでいる物をもう一度たたくと外れる
+          ...[...SUN_CORES, ...SOLO_CORES].map((id) => tile(id, id === this.sun, () => this.setLook(this.cinema, id === this.sun ? null : id)))));
+    this.drawTiles();
+  }
+
+  // ルックの一覧の小さな画: カメラの小さな画に、ルックの色の向きだけを掛けた目印（本物の写りは、選ぶとすぐ上の画に出る）
+  drawTiles() {
+    if (this.els.looks.hidden || !this.rawCv) return;
+    const src = this.rawCv, side = Math.min(src.width, src.height);
+    for (const cv of this.els.looks.querySelectorAll("canvas")) {
+      cv.getContext("2d").drawImage(src, (src.width - side) / 2, (src.height - side) / 2, side, side, 0, 0, cv.width, cv.height);
+      cv.classList.add("is-on");
     }
-    const cams = [h("small", {}, "カメラ"),
-      h("button", { class: "cam-look" + (!this.film ? " is-on" : ""), onClick: () => this.setFilm(false) }, "サングラス"),
-      h("button", { class: "cam-look" + (this.film ? " is-on" : ""), onClick: () => this.setFilm(true) }, "写ルンです")];
-    const list = h("div", { class: "cam-looks-list" }, ...cams, ...(this.film ? [] : [h("small", {}, "ルック"),
-      h("button", { class: "cam-look" + (this.cinema ? " is-on" : ""), onClick: () => this.setLook(!this.cinema, SOLO_CORES.includes(this.sun) ? null : this.sun, true) }, "Cinema　" + (this.cinema ? "オン" : "オフ")),
-      h("small", {}, "Aftersun を足す・Warm に替える"),
-      ...[null, ...SUN_CORES, ...SOLO_CORES].map((id) => h("button", { class: "cam-look" + (id === this.sun ? " is-on" : ""), onClick: () => this.setLook(this.cinema, id) }, id ? this.familyName(id) : "なし"))]));
-    el.replaceChildren(list);
-    water(list, { kind: "solid", radius: 22, press: false });
-    el.hidden = false;
-    bridge.haptic("tick");
   }
 
-  // 上の設定: 値の所を上下になぞると、ダイヤルを回すように値が送られる（1 つ進むごとに軽い手応え）。たたくと次の値
-  wheel(btn, key) {
-    const list = SETTINGS[key];
-    let startY = 0, startIdx = 0, moved = false, active = false;
-    btn.addEventListener("pointerdown", (e) => {
-      active = true;
-      moved = false;
-      startY = e.clientY;
-      startIdx = list.indexOf(this.settings[key]);
-      btn.setPointerCapture(e.pointerId);
-    });
-    btn.addEventListener("pointermove", (e) => {
-      if (!active) return;
-      const dy = startY - e.clientY;
-      if (Math.abs(dy) > 6) moved = true;
-      const steps = Math.round(dy / 24);
-      const i = (((startIdx + steps) % list.length) + list.length) % list.length;
-      if (list[i] !== this.settings[key]) this.setSetting(key, list[i], steps > 0 ? "up" : "down");
-    });
-    const end = () => {
-      if (!active) return;
-      active = false;
-      if (!moved) {
-        const i = list.indexOf(this.settings[key]);
-        this.setSetting(key, list[(i + 1) % list.length], "up");
-      }
-    };
-    btn.addEventListener("pointerup", end);
-    btn.addEventListener("pointercancel", end);
+  // 戻るの操作で、出している一覧・設定を閉じる（閉じた物があれば true）
+  closePanel() {
+    const open = !this.els.looks.hidden || !this.els.sets.hidden;
+    this.toggleLooks(false);
+    this.toggleSets(false);
+    return open;
   }
 
-  setSetting(key, value, dir) {
+  // 設定の表（右下の印をたたくと、写真の下が替わる）。選ぶ物は言葉を並べ、入り切りはスイッチ
+  toggleSets(open = this.els.sets.hidden) {
+    if (open) this.toggleLooks(false);
+    this.els.under.classList.toggle("is-sets", open);
+    this.els.sets.hidden = !open;
+    if (open) this.renderSets();
+  }
+
+  renderSets() {
+    const s = this.settings;
+    const pick = (label, opts, cur, fn) => h("div", { class: "cam-srow" }, h("span", { class: "cam-sk" }, label),
+      h("span", { class: "cam-sopts" }, opts.map(([v, t]) => h("button", { class: "cam-sopt" + (v === cur ? " is-on" : ""), onClick: () => fn(v) }, t))));
+    const sw = (label, hint, on, fn) => h("button", { class: "cam-srow", role: "switch", "aria-checked": String(!!on), onClick: () => fn(!on) },
+      h("span", { class: "cam-sk" }, label, h("small", {}, hint)), h("i", { class: "cam-sw" + (on ? " is-on" : "") }));
+    this.els.sets.replaceChildren(
+      h("div", { class: "cam-phead" }, h("b", {}, "設定"), h("button", { class: "cam-done", onClick: () => this.toggleSets(false) }, "完了")),
+      pick("ガイド", this.film ? [["3:2", "3:2"]] : FRAMES, this.film ? "3:2" : s.frame, (v) => this.setSetting("frame", v)),
+      pick("タイマー", [[0, "オフ"], [3, "3秒"], [10, "10秒"]], s.timer, (v) => this.setSetting("timer", v)),
+      pick("AF", [["continuous", "連続"], ["single", "1回"]], this.pro.af, (v) => {
+        if (v === this.pro.af) return;
+        this.setPro("af", v);
+        bridge.haptic("tick");
+        this.renderSets();
+      }),
+      sw("白とび警告", "白とびを縞で示す", s.zebra, (v) => this.setSetting("zebra", v)),
+      sw("JPEG も保存", "RAW と一緒に保存", s.autoJpeg, (v) => this.setSetting("autoJpeg", v)));
+  }
+
+  setSetting(key, value) {
     if (key === "frame" && this.film) return; // 写ルンですの枠は 3:2 で決まり
+    if (this.settings[key] === value) return;
     this.settings[key] = value;
     pref("camera", this.settings);
     bridge.haptic("tick");
     if (key === "zebra") bridge.cameraCall("cameraSetZebra", value);
     if (key === "flash" && value) {
       // たけない時は、選んだその場で理由を出す
-      if (bridge.bridgeVersion() < bridge.FLASH_BRIDGE) this.bubble("フラッシュ", "アプリの更新が要ります", 2200);
-      else if ((this.opened || {}).flash === false) this.bubble("フラッシュ", "このカメラにはライトがありません", 2200);
+      if (bridge.bridgeVersion() < bridge.FLASH_BRIDGE) toast("フラッシュをたくには、アプリの更新が要ります", [], 2600);
+      else if ((this.opened || {}).flash === false) toast("このカメラにはライトがありません", [], 2600);
     }
-    this.renderSettings(key, dir);
+    this.renderSettings();
+    if (!this.els.sets.hidden) this.renderSets();
   }
 
-  renderSettings(changed, dir) {
+  // 上の行の名前: 大きい字に土台のルック、小さい字に足しているルック
+  lookParts() {
+    if (this.film) return ["写ルンです", ""];
+    const n = this.sun ? this.familyName(this.sun) : "";
+    return this.cinema ? ["Cinema", n ? "＋ " + n : ""] : [n || "ルックなし", ""];
+  }
+
+  renderSettings() {
     const s = this.settings, $ = (id) => document.getElementById(id);
-    const text = {
-      frame: this.film ? "3:2" : FRAMES.find((f) => f[0] === s.frame)[1], timer: s.timer ? s.timer + "秒" : "オフ", zebra: onOff(s.zebra),
-      sound: onOff(s.sound), autoJpeg: onOff(s.autoJpeg), flash: s.flash ? "たく" : "オフ",
-    };
-    for (const key of Object.keys(SETTINGS)) {
-      const b = $("cam-set-" + (key === "autoJpeg" ? "jpeg" : key)).querySelector("b");
-      b.textContent = text[key];
-      b.classList.toggle("num", key === "frame" && (this.film || s.frame === "1.85"));
-      if (key === changed) {
-        b.classList.remove("roll-up", "roll-down");
-        void b.offsetWidth;
-        b.classList.add(dir === "down" ? "roll-down" : "roll-up");
-      }
-    }
+    // 上の印: 入れている間だけ麦わら色（タイマーは秒数を添える）
+    $("cam-set-flash").classList.toggle("is-on", !!s.flash);
+    $("cam-set-flash").setAttribute("aria-pressed", String(!!s.flash));
+    $("cam-set-timer").classList.toggle("is-on", s.timer > 0);
+    $("cam-set-timer").querySelector("b").textContent = s.timer ? String(s.timer) : "";
     this.els.frame.dataset.frame = this.film ? "3:2" : s.frame; // 写ルンですは、写る範囲（3:2）の枠を出す
     this.els.grid.hidden = this.film || s.frame !== "thirds";
     // 写ルンですは合わせる所が無いので、つまみの列を隠して、カメラの決まりの値だけを出す
     this.els.pro.parentElement.classList.toggle("is-film", this.film);
     document.getElementById("cam-fixed").hidden = !this.film;
     document.getElementById("cam-fixed-note").textContent = s.flash ? "フラッシュをたきます。押すだけです" : "フラッシュはたきません。押すだけです";
-    const name = this.lookName();
-    this.els.coreBtn.classList.toggle("is-long", name.length > 12); // 長い名前は字を小さくして、シャッターに寄らないようにする
-    this.els.coreBtn.replaceChildren(h("small", {}, "ルック"), h("b", {}, name), h("span", { class: "cam-core-hint" }, "長押しで元の画"));
+    const [main, sub] = this.lookParts();
+    this.els.coreBtn.querySelector("b").textContent = main;
+    this.els.coreBtn.querySelector("small").textContent = sub;
+    this.els.coreBtn.dataset.name = this.lookName();
+    this.renderDial();
   }
 
   // ---------- 開く・閉じる ----------
@@ -332,6 +342,7 @@ export class Camera {
   close() {
     this.active = false;
     this.toggleLooks(false);
+    this.toggleSets(false);
     this.root.hidden = true;
     document.documentElement.classList.remove("is-camera");
     bridge.cameraCall("cameraClose");
@@ -355,11 +366,20 @@ export class Camera {
   // 撮る画面の画の大きさ: 縦横 3:4 のまま、ほかの部品を置いた残りの高さに収める（足りなければ左右を空ける）
   layoutView() {
     const cs = getComputedStyle(this.root);
-    const others = [...this.root.children].filter((el) => el !== this.view && !el.hidden).reduce((s, el) => s + el.getBoundingClientRect().height, 0);
+    const others = [...this.root.children].filter((el) => el !== this.view && el !== this.els.amb && !el.hidden).reduce((s, el) => s + el.getBoundingClientRect().height, 0);
     const avail = this.root.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - others;
-    const w = Math.max(120, Math.min(this.root.clientWidth, (avail * 3) / 4));
+    const w = Math.max(120, Math.min(this.root.clientWidth - 16, (avail * 3) / 4)); // 左右に 8px ずつ、地を見せる
     this.view.style.width = w + "px";
     this.view.style.height = (w * 4) / 3 + "px";
+    this.placeHole();
+  }
+
+  // 地（ぼかした画）に、写真の所だけ角の丸い窓を開ける。カメラの画は APK がページの下に描くので、窓から見える
+  placeHole() {
+    const r = this.view.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight, a = Math.min(24, r.width / 2);
+    const f = (v) => +v.toFixed(2), x = f(r.left), y = f(r.top), w = f(r.width), hh = f(r.height);
+    const hole = `M${x + a} ${y}h${w - 2 * a}a${a} ${a} 0 0 1 ${a} ${a}v${hh - 2 * a}a${a} ${a} 0 0 1 ${-a} ${a}h${-(w - 2 * a)}a${a} ${a} 0 0 1 ${-a} ${-a}v${-(hh - 2 * a)}a${a} ${a} 0 0 1 ${a} ${-a}Z`;
+    this.els.amb.style.clipPath = `path(evenodd, "M0 0H${W}V${H}H0Z ${hole}")`;
   }
 
   rect() {
@@ -440,13 +460,13 @@ export class Camera {
 
   // カメラを替える（サングラス／写ルンです）。写ルンですは、メインのレンズを 32mm 相当まで拡大して使う
   async setFilm(on) {
-    this.toggleLooks(false);
     if (on === this.film) return;
     this.film = on;
     pref("cameraFilm", on ? 1 : 0);
     bridge.haptic("tick");
     this.renderSettings();
-    this.bubble("カメラ", on ? "写ルンです" : "サングラス", 1100);
+    if (!this.els.looks.hidden) this.toggleLooks(true);
+    if (!this.els.sets.hidden) this.renderSets();
     // 明るさは自動に戻す（手で決めた値のままだと、ライトをつけた時の明るさを測れない）
     this.expo = { auto: true, display: 0, frozen: null, at: 0, remainder: 0 };
     this.cEvNow = 0;
@@ -470,24 +490,27 @@ export class Camera {
     this.renderLenses();
   }
 
+  // 焦点距離の列（2026-11-26）: 今のレンズを拡大する段（1・2・3 倍）と、ほかのレンズを、35mm 換算の数字 1 列に並べる。
+  // 拡大は RAW の切り抜き（前と同じ）。ほかのレンズの数字をたたくと、そのレンズに替える（開き直す）
   renderLenses() {
     if (this.film) {
-      this.els.lenses.replaceChildren(h("button", { class: "chip num is-on" }, UT.CAM.focal + "mm"));
+      this.els.lenses.replaceChildren(h("button", { class: "chip num is-on" }, String(UT.CAM.focal)));
       return;
     }
-    const max = this.zoomMax();
-    const steps = max > 1 ? ZOOM_STEPS.filter((v) => v <= max + 0.01) : [];
-    // 今の倍率にいちばん近い札を光らせ、ちょうどでない時はその札に今の倍率を出す（1.4× など）
+    const max = this.zoomMax(), base = (this.cam && this.cam.eq35) || 0;
+    const others = (this.cams || []).filter((c) => c.id !== this.cam.id);
+    // 今のレンズの拡大で、次に長いレンズの焦点距離に届く段は出さない（そのレンズの数字がある）
+    const next = Math.min(Infinity, ...others.filter((c) => base && c.eq35 > base).map((c) => c.eq35));
+    const steps = (max > 1 ? ZOOM_STEPS.filter((v) => v <= max + 0.01) : [1]).filter((v) => v === 1 || base * v < next * 0.95);
+    // 今の倍率にいちばん近い数字を丸で囲み、ちょうどでない時はその数字を今の焦点距離にする（32 など）
     const near = steps.reduce((a, v) => (v <= this.zoom + 0.001 ? v : a), steps[0]);
-    const fmt = (v) => (Math.abs(v - Math.round(v)) < 0.05 ? Math.round(v) : v.toFixed(1)) + "×";
-    const zoomChips = steps.map((v) => h("button", {
+    const name = (v) => (base ? String(Math.round(base * v)) : (Math.abs(v - Math.round(v)) < 0.05 ? Math.round(v) : v.toFixed(1)) + "×");
+    const list = steps.map((v) => [base * v, h("button", {
       class: "chip num cam-zoom" + (v === near ? " is-on" : ""),
       onClick: () => this.setZoom(v),
-    }, v === near ? fmt(this.zoom) : fmt(v)));
-    this.els.lenses.replaceChildren(...zoomChips, ...(this.cams.length > 1 ? this.cams.map((c) => h("button", {
-      class: "chip num" + (c.id === this.cam.id ? " is-on" : ""),
-      onClick: () => this.useCam(c),
-    }, c.eq35 ? c.eq35 + "mm" : "レンズ " + c.id)) : []));
+    }, v === near ? name(this.zoom) : name(v))]);
+    for (const c of others) list.push([c.eq35 || 9999, h("button", { class: "chip num", onClick: () => this.useCam(c) }, c.eq35 ? String(c.eq35) : "レンズ " + c.id)]);
+    this.els.lenses.replaceChildren(...list.sort((a, b) => a[0] - b[0]).map((x) => x[1]));
   }
 
   // ---------- ルックと Sun Level ----------
@@ -556,31 +579,18 @@ export class Camera {
     if (this.v3) bridge.cameraCall("cameraSetWeights", lk.wN, lk.wA, lk.wB);
   }
 
-  // 輪を回している間とルックを替えたときに、値や名前を画の上に大きく出す（端末の向きに合わせて回る）
-  bubble(label, text, ms = 700) {
-    const b = this.els.bubble;
-    b.querySelector("small").textContent = label;
-    b.querySelector("b").textContent = text;
-    b.classList.toggle("is-name", label === "ルック");
-    b.classList.add("is-on");
-    clearTimeout(this.bubbleTimer);
-    this.bubbleTimer = setTimeout(() => b.classList.remove("is-on"), ms);
-  }
-
-  // ルックを替える。Cinema のオン・オフは、続けて Aftersun を選べるよう、一覧を開いたままにする
-  async setLook(cinema, sun, keepOpen = false) {
-    this.toggleLooks(false);
+  // ルックを替える。一覧は開いたまま（写真を隠さないので、続けて選べる）
+  async setLook(cinema, sun) {
     if (SOLO_CORES.includes(sun)) cinema = false; // 単独のルック（Warm）を選んだら Cinema はオフ
     if (cinema === this.cinema && sun === this.sun) return;
     this.cinema = cinema;
     this.sun = sun;
     pref("cameraCinema", cinema ? 1 : 0);
     pref("cameraSun", sun || "");
-    if (keepOpen) this.toggleLooks(true);
     this.sunLevel = pref(this.sunKey()) ?? this.sunDef();
     bridge.haptic("tick");
     this.renderSettings();
-    this.bubble("ルック", this.els.coreBtn.querySelector("b").textContent, 1100);
+    if (!this.els.looks.hidden) this.toggleLooks(true);
     this.buildControls();
     await this.sendLook();
   }
@@ -684,16 +694,18 @@ export class Camera {
 
   buildPro() {
     this.proCells = {};
-    this.els.pro.replaceChildren(...PRO.map(([key, label]) => {
-      const b = h("b");
-      const cell = h("button", { class: "cam-pro-cell rot", onClick: () => this.toggleProRing(key) }, h("small", {}, label), b);
-      this.proCells[key] = { cell, b };
-      return cell;
-    }));
+    const cell = (key, label, onClick) => {
+      const b = h("b", { class: "num" }), small = h("small", {}, label);
+      const el = h("button", { class: "cam-pro-cell rot", "data-key": key, onClick }, b, small);
+      this.proCells[key] = { cell: el, b, small };
+      return el;
+    };
+    this.els.pro.replaceChildren(...PRO.map(([key, label]) => cell(key, label, () => this.toggleProRing(key))),
+      cell("ev", "露光量", () => this.pickDial("ev")), cell("sun", "Sun Level", () => this.pickDial("sun")));
     this.renderPro();
   }
 
-  // 項目の値: 手で決めた値は琥珀色、自動の項目は、いま決まっている値を薄い字で
+  // 項目の値: 自動の項目は、いま決まっている値を薄い字で。手で決めた値は白。目盛りを出している項目は麦わら色
   proText(key) {
     const p = this.pro, l = this.live || {};
     if (key === "s") {
@@ -709,7 +721,7 @@ export class Camera {
     if (key === "wb") return p.wb === "auto" ? ["自動", "auto"] : [fmtWb(p.wb), "man"];
     if (key === "focus") {
       if (p.focus !== null) return [fmtF(p.focus), "man"];
-      return [l.focus > 0 ? fmtF(1 / l.focus) : l.focus === 0 ? "∞" : "自動", "auto"];
+      return [l.focus > 0 ? fmtF(1 / l.focus) : l.focus === 0 ? "∞" : "AF", "auto"];
     }
     return [p.af === "single" ? "1回" : "連続", "mode"];
   }
@@ -721,7 +733,6 @@ export class Camera {
       const { cell, b } = this.proCells[key];
       const [text, kind] = this.proText(key);
       b.textContent = text;
-      b.classList.toggle("num", /^[0-9∞1/]/.test(text) && kind !== "mode");
       cell.classList.toggle("is-man", kind === "man");
       cell.classList.toggle("is-auto", kind === "auto");
       cell.classList.toggle("is-open", this.openKey === key);
@@ -736,11 +747,50 @@ export class Camera {
         this.proRing.setText("自動" + (text !== "自動" ? "（" + text + "）" : ""));
       }
     }
+    this.renderDial();
   }
 
+  // いま目盛りに出すのは、露出か Sun Level か（Aftersun を足していない時は、露出だけ）
+  dial() {
+    return this.sun && !this.film && pref("cameraDial") === "sun" ? "sun" : "ev";
+  }
+
+  // 露出と Sun Level の項目。露出は、自動のあいだは薄い字。S と ISO を両方手で決めたら、露出計になる
+  renderDial() {
+    if (!this.proCells) return;
+    const dial = this.dial(), full = this.fullManual(), { ev, sun } = this.proCells;
+    ev.cell.classList.toggle("is-open", !this.openKey && dial === "ev");
+    ev.cell.classList.toggle("is-auto", this.expo.auto && !full);
+    ev.small.textContent = full ? "露出計" : "露光量";
+    if (!ev.b.textContent) ev.b.textContent = fmtEv(this.expo.display);
+    sun.cell.hidden = !this.sun || this.film;
+    sun.cell.classList.toggle("is-open", !this.openKey && dial === "sun");
+    sun.b.textContent = String(Math.round(this.sunLevel));
+    this.els.pro.style.setProperty("--cells", sun.cell.hidden ? PRO.length + 1 : PRO.length + 2);
+  }
+
+  // 数字をたたく: その数字が麦わら色になり、目盛りがその項目に替わる。
+  // 麦わら色の数字をもう一度たたくと、手で決めた値は自動に戻る（自動のままなら、露出の目盛りに戻る）
   toggleProRing(key) {
     bridge.haptic("tick");
-    this.openKey = this.openKey === key ? null : key;
+    if (this.openKey === key) {
+      const manual = key === "wb" ? this.pro.wb !== "auto" : this.pro[key] !== null;
+      if (manual) this.setPro(key, key === "wb" ? "auto" : null);
+      else this.openKey = null;
+    } else this.openKey = key;
+    this.buildControls();
+    this.renderPro();
+  }
+
+  // 露出・Sun Level の数字をたたく: 目盛りをその項目に替える。麦わら色の露出をもう一度たたくと、自動に戻る
+  pickDial(k) {
+    if (!this.openKey && this.dial() === k) {
+      if (k === "ev") this.setAuto();
+      return;
+    }
+    bridge.haptic("tick");
+    this.openKey = null;
+    pref("cameraDial", k);
     this.buildControls();
     this.renderPro();
   }
@@ -748,7 +798,7 @@ export class Camera {
   proStops(key) {
     if (key === "s") return [{ v: null, label: "A", mark: "major", gap: 34 }, ...this.sList().map((s) => {
       const full = S_FULL.some((f) => near(f, s));
-      return { v: s, mark: full ? "major" : "minor", label: full ? fmtS(s).replace("秒", "") : null, gap: 24 };
+      return { v: s, mark: full ? "major" : "minor", label: full ? fmtS(s).replace("s", "") : null, gap: 24 };
     })];
     if (key === "iso") return [{ v: null, label: "A", mark: "major", gap: 34 }, ...this.isoList().map((v) => {
       const full = ISO_FULL.includes(v);
@@ -801,7 +851,6 @@ export class Camera {
       tick: (i) => stops[i].mark === "major",
       onInput: (v) => {
         this.setPro(key, key === "wb" && v === "auto" ? "auto" : v);
-        this.bubble(name, fmt(v));
       },
       onReset: () => {
         if (key === "af") return;
@@ -908,22 +957,17 @@ export class Camera {
       this.els.ev.replaceChildren(...this.buildProRing(this.openKey));
     } else {
       const full = this.fullManual();
-      const autoBtn = full ? h("span", { class: "cam-meter" }, "露出計") : h("button", { class: "cam-auto" + (this.expo.auto ? " is-on" : ""), onClick: () => this.setAuto() }, "自動");
-      this.autoBtn = full ? null : autoBtn;
-      // 露出と Sun Level は同時に動かさないので、1本の輪にして見出しで切り替える（画を大きくするため）
-      const dial = this.sun && pref("cameraDial") === "sun" ? "sun" : "ev"; // Aftersun を足していない時は、Sun Level の輪は出さない
-      const tabs = (cur) => h("span", { class: "cam-tabs" },
-        h("button", { class: "cam-tab" + (cur === "ev" ? " is-on" : ""), onClick: () => this.setDial("ev") }, "露出"),
-        h("button", { class: "cam-tab" + (cur === "sun" ? " is-on" : ""), hidden: !this.sun, onClick: () => this.setDial("sun") }, this.sunName()));
+      // 露出と Sun Level は同時に動かさないので、目盛りは 1 本。どちらを出すかは、数字の列でたたいて選ぶ
+      const dial = this.dial();
       const evStops = [];
       for (let k = -9; k <= 9; k++) evStops.push({ v: k / 3, mark: k % 3 ? "minor" : "major", label: k % 3 ? null : (k > 0 ? "+" : k < 0 ? "−" : "") + Math.abs(k / 3), gap: 17 });
       this.evStops = evStops;
       this.evRing = ring({
-        label: "", stops: evStops, index: 9, extra: h("span", { class: "cam-dial-extra" }, tabs("ev"), autoBtn), fmt: (v) => fmtEv(v),
+        label: "", stops: evStops, index: 9, fmt: (v) => fmtEv(v),
         tick: (i) => evStops[i].mark === "major",
         onInput: (v) => {
           this.setManual(v);
-          this.bubble("露出", fmtEv(v));
+          this.proCells.ev.b.textContent = fmtEv(v);
         },
         onReset: () => this.setAuto(),
       });
@@ -934,46 +978,40 @@ export class Camera {
       const sc = this.cinema || !this.sun ? 100 : sunCoreOf(this.engine.cores ? this.engine.coreById(this.sun) : null);
       for (let v = 0; v <= 100; v++) lvStops.push({ v, mark: v % 50 === 0 || v === sc ? "major" : v % 10 === 0 ? "minor" : null, label: v % 50 === 0 ? String(v) : null, gap: 3.4 });
       const lv = ring({
-        label: "", extra: h("span", { class: "cam-dial-extra" }, tabs("sun")), stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: sc < 100 ? [sc] : [],
+        label: "", stops: lvStops, index: Math.round(this.sunLevel), fmt: (v) => String(v), snaps: sc < 100 ? [sc] : [],
         onInput: (v) => {
           this.sunLevel = v;
           pref(this.sunKey(), v);
           this.sendWeights();
-          this.bubble(this.sunName(), String(v));
+          this.proCells.sun.b.textContent = String(v);
         },
         onReset: () => {
           this.sunLevel = this.sunDef();
           pref(this.sunKey(), this.sunLevel);
           lv.set(this.sunLevel);
           this.sendWeights();
+          this.renderDial();
         },
       });
       this.evRing.el.setAttribute("aria-label", "露出");
       lv.el.setAttribute("aria-label", this.sunName());
       this.evRing.el.hidden = dial !== "ev";
       lv.el.hidden = dial !== "sun";
-      this.dialEls = { ev: this.evRing.el, sun: lv.el };
       const kids = [this.evRing.el, lv.el];
       if (!this.v3) kids.push(h("p", { class: "cam-note" }, "撮る画面で Sun Level を見るには、アプリの入れ直しが必要です（撮った写真には効きます）"));
       this.els.ev.replaceChildren(...kids);
     }
+    this.renderDial();
     if (this.active) {
       this.layoutView();
       this.sendRect();
     }
   }
 
-  setDial(k) {
-    if (!this.dialEls || this.dialEls[k].hidden === false) return;
-    pref("cameraDial", k);
-    this.dialEls.ev.hidden = k !== "ev";
-    this.dialEls.sun.hidden = k !== "sun";
-    bridge.haptic("tick");
-  }
-
-  // 露出の輪に値を出す（自動の値や露出計の値は、目盛りの途中も指す）
+  // 露出の値を出す（自動の値や露出計の値は、目盛りの途中も指す）。数字の列の露出にも同じ値を出す
   showEv(v) {
-    if (!this.evRing) return;
+    if (this.proCells) this.proCells.ev.b.textContent = fmtEv(v);
+    if (!this.evRing || this.openKey) return;
     this.evRing.set(C.clamp(v, -3, 3) * 3 + 9);
     this.evRing.setText(fmtEv(v));
   }
@@ -983,7 +1021,7 @@ export class Camera {
     this.expo = { auto: true, display: this.expo.display, frozen: null, at: 0, remainder: 0 };
     bridge.cameraCall("cameraSetEv", 0);
     this.cEvNow = 0;
-    if (this.autoBtn) this.autoBtn.classList.add("is-on");
+    this.renderDial();
     bridge.haptic("tick");
   }
 
@@ -992,7 +1030,7 @@ export class Camera {
     if (this.expo.auto) {
       // 手動に切り替える: いまの自動の明るさで止めて、そこから動かす
       this.expo = { auto: false, display: v, frozen: { ...this.gains }, at: this.expo.display, remainder: 0 };
-      if (this.autoBtn) this.autoBtn.classList.remove("is-on");
+      this.renderDial();
     }
     this.expo.display = v;
     this.applyExpo();
@@ -1087,13 +1125,38 @@ export class Camera {
     if (this.expo.auto) {
       // 自動: 輪は、自動で決めた明るさ（均一な灰色の景色を 0 とした段）を指して一緒に動く
       this.expo.display = Math.round(C.clamp(log2(this.gains[mk] / this.baseGain(main)), -3, 3) * 10) / 10;
-      if (!this.openKey) this.showEv(this.expo.display);
-    } else if (this.fullManual() && !this.openKey) {
+      this.showEv(this.expo.display);
+    } else if (this.fullManual()) {
       // 露出計: 自動のときより何段明るく写るか
       this.showEv(log2((this.expo.frozen[mk] * Math.pow(2, this.expo.remainder)) / this.autoNow[mk]));
     }
     this.sendGains();
-    this.drawHist(d.look ? Uint8Array.from(atob(d.look), (c) => c.charCodeAt(0)) : raw);
+    const shown = d.look ? Uint8Array.from(atob(d.look), (c) => c.charCodeAt(0)) : raw;
+    this.drawHist(shown);
+    this.paintSample(d, raw, shown);
+  }
+
+  // 小さな画を、画面の地（ぼかして暗くする）と、ルックの一覧の小さな画に使う
+  paintSample(d, raw, shown) {
+    const put = (cv, bytes) => {
+      if (cv.width !== d.w || cv.height !== d.h) [cv.width, cv.height] = [d.w, d.h];
+      const px = new Uint8ClampedArray(bytes.subarray(0, d.w * d.h * 4));
+      for (let i = 3; i < px.length; i += 4) px[i] = 255;
+      cv.getContext("2d").putImageData(new ImageData(px, d.w, d.h), 0, 0);
+    };
+    if (raw.length < d.w * d.h * 4) return;
+    // 地は、前の画に半分ずつ重ねて、切り替わりをなだらかにする
+    this.ambTmp = this.ambTmp || document.createElement("canvas");
+    put(this.ambTmp, shown.length >= d.w * d.h * 4 ? shown : raw);
+    const amb = this.els.ambCv, fresh = amb.width !== d.w || amb.height !== d.h || !this.els.amb.classList.contains("is-on");
+    if (fresh) [amb.width, amb.height] = [d.w, d.h];
+    const ac = amb.getContext("2d");
+    ac.globalAlpha = fresh ? 1 : 0.5;
+    ac.drawImage(this.ambTmp, 0, 0);
+    this.els.amb.classList.add("is-on");
+    this.rawCv = this.rawCv || document.createElement("canvas");
+    put(this.rawCv, raw);
+    this.drawTiles();
   }
 
   // S か ISO の片方だけを手で決めているとき: もう片方を、カメラの自動露出が目指す明るさ（＋露出の輪）に合うよう 1/3 段ずつ動かす
@@ -1123,7 +1186,7 @@ export class Camera {
     for (let i = 0; i < px.length; i += 4) bins[Math.min(63, Math.round(0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) >> 2)]++;
     const c = cv.getContext("2d"), max = Math.max(1, ...bins.slice(1, 63)) * 1.1;
     c.clearRect(0, 0, W, H);
-    c.fillStyle = "rgba(238,234,226,.34)";
+    c.fillStyle = "rgba(255,255,255,.6)";
     c.beginPath();
     c.moveTo(0, H);
     for (let i = 0; i < 64; i++) c.lineTo((i / 63) * W, H - Math.min(1, bins[i] / max) * H);
@@ -1134,14 +1197,15 @@ export class Camera {
   // ---------- 撮る ----------
   async shoot() {
     if (!this.active || this.busy || !this.opened) return;
-    this.toggleLooks(false);
+    this.toggleSets(false);
     this.busy = true;
+    // タイマーの残りの秒は、シャッターの白い丸の中に出す（写真の上には出さない）
     for (let i = this.settings.timer; i > 0; i--) {
-      this.els.badge.hidden = false;
-      this.els.badge.textContent = i + "";
+      this.els.shutterCore.textContent = String(i);
       bridge.haptic("tick");
       await new Promise((r) => setTimeout(r, 1000));
     }
+    this.els.shutterCore.textContent = "";
     // 撮ったときの見た目（ルック・Sun Level・明るさ）を覚えておく。明るさは、自動のときと比べた差（段）
     const lk = this.look(), main = lk.B && lk.wB > 0 ? "B" : "A";
     const applied = this.expo.auto ? this.gains[main] : this.expo.frozen[main] * Math.pow(2, this.expo.remainder);
