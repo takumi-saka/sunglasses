@@ -43,11 +43,15 @@ export class Library {
     document.getElementById("lib-sel-delete").onclick = () => this.deleteSelected();
     window.addEventListener("sunglasses:deleted", (e) => this.onDeleted(e.detail || {}));
     this.io = new IntersectionObserver((entries) => {
+      // 見えた写真を、列の先頭へ入れる。同時に見えた物は上から順に（いちばん上の大きい 1 枚が最初）
+      const batch = [];
       for (const e of entries) {
         if (!e.isIntersecting) continue;
         this.io.unobserve(e.target);
-        this.queue.unshift(e.target);
+        batch.push(e.target);
       }
+      batch.sort((a, b) => (b._big ? 1 : 0) - (a._big ? 1 : 0));
+      this.queue.unshift(...batch);
       this.pump();
     }, { rootMargin: "400px 0px" });
   }
@@ -146,7 +150,7 @@ export class Library {
   tile(it, big = false) {
     const key = bridge.keyOf(it);
     // まずスマホの小さな画（核なし）をすぐ出し、RAW から核をかけた画ができたら差し替える
-    const img = h("img", { class: "thumb", alt: "", decoding: "async", loading: "lazy", draggable: "false", ...(it.token ? {} : { src: bridge.thumbUrl(it) }) });
+    const img = h("img", { class: "thumb", alt: "", decoding: "async", loading: "lazy", draggable: "false", ...(it.token ? {} : { src: bridge.thumbUrl(it, big ? HERO_SIZE : 384) }) });
     img.onload = () => el.classList.add("is-ready");
     const el = h("button", {
       class: "tile" + (big ? " is-hero" : "") + (this.edited.has(key) ? " is-edited" : "") + (this.selected.has(key) ? " is-selected" : ""),

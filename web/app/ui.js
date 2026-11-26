@@ -74,7 +74,8 @@ export function slider({ label, min, max, step = 1, value, def = 0, fmt, track =
   });
   el.addEventListener("pointermove", (e) => {
     if (!dragging) return;
-    const w = trackEl.getBoundingClientRect().width || 1;
+    // 線が短い形（1 行のつまみ）でも、指の動きに対する値の動きは、幅いっぱいの線と同じにする
+    const w = Math.max(trackEl.getBoundingClientRect().width, innerWidth - 48) || 1;
     const nowFine = Math.abs(e.clientY - startY) > 44;
     if (nowFine !== fine) {
       // 速さが変わる所で、いまの値から数え直す（値が跳ねないように）

@@ -190,8 +190,10 @@ export class Camera {
     el.hidden = !open;
     if (!open) return;
     const kind = (on, label, fn) => h("button", { class: "cam-kind" + (on ? " is-on" : ""), onClick: fn }, label);
-    const tile = (id, on, fn) => h("button", { class: "cam-look rot" + (on ? " is-on" : ""), "data-look": id, onClick: fn },
-      h("canvas", { class: "cam-look-cv", width: 48, height: 48 }), h("span", {}, id === "cinema" ? "Cinema" : this.familyName(id).replace(/^Aftersun (?=.)/, "")));
+    // 見本は、海と太陽の絵をルックごとの色の向きで塗り分けた画（web/looks/tiles/。作り方は dev/look_tiles_art/。本物の写りではなく目印）。カメラの画は使わない
+    const tile = (id, on, fn) => h("button", { class: "cam-look" + (on ? " is-on" : ""), "data-look": id, onClick: fn },
+      h("img", { class: "cam-look-cv rot", src: `looks/tiles/${id}.jpg`, alt: "", draggable: "false", onError: (e) => (e.target.style.visibility = "hidden") }),
+      h("span", {}, id === "cinema" ? "Cinema" : this.familyName(id).replace(/^Aftersun (?=.)/, "")));
     el.replaceChildren(
       h("div", { class: "cam-phead" }, kind(!this.film, "Sunglasses", () => this.setFilm(false)), kind(this.film, "写ルンです", () => this.setFilm(true)),
         h("button", { class: "cam-done", onClick: () => this.toggleLooks(false) }, "完了")),
@@ -200,17 +202,6 @@ export class Camera {
           tile("cinema", this.cinema, () => this.setLook(!this.cinema, SOLO_CORES.includes(this.sun) ? null : this.sun)),
           // 足す Aftersun と、単独の Warm。選んでいる物をもう一度たたくと外れる
           ...[...SUN_CORES, ...SOLO_CORES].map((id) => tile(id, id === this.sun, () => this.setLook(this.cinema, id === this.sun ? null : id)))));
-    this.drawTiles();
-  }
-
-  // ルックの一覧の小さな画: カメラの小さな画に、ルックの色の向きだけを掛けた目印（本物の写りは、選ぶとすぐ上の画に出る）
-  drawTiles() {
-    if (this.els.looks.hidden || !this.rawCv) return;
-    const src = this.rawCv, side = Math.min(src.width, src.height);
-    for (const cv of this.els.looks.querySelectorAll("canvas")) {
-      cv.getContext("2d").drawImage(src, (src.width - side) / 2, (src.height - side) / 2, side, side, 0, 0, cv.width, cv.height);
-      cv.classList.add("is-on");
-    }
   }
 
   // 戻るの操作で、出している一覧・設定を閉じる（閉じた物があれば true）
@@ -628,7 +619,7 @@ export class Camera {
         this.els.readout.textContent = "RAW " + (mp >= 10 ? Math.round(mp) : mp.toFixed(1)) + "MP";
       }
       const s = this.sens ? this.sens.s : d.exposure;
-      this.els.badge.textContent = d.locked ? "AE/AFロック" : s && s > 1 / 15 ? "手ぶれに注意（" + fmtS(s) + "）" : "";
+      this.els.badge.textContent = d.locked ? "AE/AFロック" : s && s > 1 / 15 ? "手ぶれ注意" : "";
       this.els.badge.hidden = !this.els.badge.textContent;
       this.renderPro();
     } else if (d.state === "error" && this.cam && this.cam.parent && this.prevCam) {
@@ -1136,11 +1127,13 @@ export class Camera {
     this.paintSample(d, raw, shown);
   }
 
-  // 小さな画を、画面の地（ぼかして暗くする）と、ルックの一覧の小さな画に使う
+  // 小さな画を、画面の地（ぼかして暗くする）に使う
   paintSample(d, raw, shown) {
     const put = (cv, bytes) => {
       if (cv.width !== d.w || cv.height !== d.h) [cv.width, cv.height] = [d.w, d.h];
-      const px = new Uint8ClampedArray(bytes.subarray(0, d.w * d.h * 4));
+      // GL の読み出しは下の行から届くので、上下を入れ替える
+      const px = new Uint8ClampedArray(d.w * d.h * 4), row = d.w * 4;
+      for (let y = 0; y < d.h; y++) px.set(bytes.subarray((d.h - 1 - y) * row, (d.h - y) * row), y * row);
       for (let i = 3; i < px.length; i += 4) px[i] = 255;
       cv.getContext("2d").putImageData(new ImageData(px, d.w, d.h), 0, 0);
     };
@@ -1154,9 +1147,6 @@ export class Camera {
     ac.globalAlpha = fresh ? 1 : 0.5;
     ac.drawImage(this.ambTmp, 0, 0);
     this.els.amb.classList.add("is-on");
-    this.rawCv = this.rawCv || document.createElement("canvas");
-    put(this.rawCv, raw);
-    this.drawTiles();
   }
 
   // S か ISO の片方だけを手で決めているとき: もう片方を、カメラの自動露出が目指す明るさ（＋露出の輪）に合うよう 1/3 段ずつ動かす

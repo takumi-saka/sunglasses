@@ -11,7 +11,7 @@ import { ASPECTS, GRADE_ZONES, GROUPS, HSL_COLORS, HSL_NAMES, KNOBS, L, changed,
 import { deleteEdit, getEdit, pref, setEdit } from "./store.js";
 import { closeSheet, h, sheet, slider, toast } from "./ui.js";
 
-const UNDER_MIN = 318; // 写真の下に必ず残す高さ（名前の行・値の名前・大きな数字・目盛り・タブ）
+const UNDER_MIN = 382; // 写真の下に必ず残す高さ（名前の行・値の名前・大きな数字・目盛り・タブ）。縦の写真でも、カラーミキサーの目盛りまで切れずに入る高さ
 const HIST_GROUPS = ["basic", "light", "color", "effect", "detail"]; // 目盛りの下に明るさの山を出すタブ
 const AUTO_CORE = "cinema"; // 2026-11-10 夜 直していない写真は Cinema（映画の見た目の核）で開く。前は aftersun2
 const AUTO = { core: AUTO_CORE, sunLevel: 0 }; // Cinema の Sun Level（Aftersun を足す量）は 0 がはじめの値
@@ -65,7 +65,7 @@ export class Editor {
     this.coreChip = document.getElementById("ed-core-chip");
     this.oneBtn = document.getElementById("ed-one");
     this.group = pref("group") || "basic";
-    this.toolAt = {}; // タブごとに、選んでいる値の番号
+    this.toolAt = {}; // タブごとに、選んでいる値の名前
     this.hslIndex = 4;
     this.gradeZone = "shadows";
     this.saveTimer = 0;
@@ -230,6 +230,7 @@ export class Editor {
     this.badge.textContent = text;
     this.badge.hidden = !text;
     this.badge.classList.toggle("is-busy", !!busy);
+    this.root.dataset.badge = text || ""; // 全画面の間は、写真の上の端に出す（CSS）
   }
 
   firstHint() {
@@ -504,7 +505,8 @@ export class Editor {
   dial(id, specs) {
     specs = specs.filter(Boolean);
     const vals = specs.map((s) => s.value);
-    let i = Math.min(specs.length - 1, Math.max(0, this.toolAt[id] || 0)), lastTap = 0;
+    // 選んでいる値は、名前で覚える（値が 1 つ増えても、選んでいた値がずれない）
+    let i = Math.max(0, specs.findIndex((s, j) => (s.key || j) === this.toolAt[id])), lastTap = 0;
     const tools = specs.map((s, j) => {
       const t = h("button", { class: "ed-tool", onClick: () => j !== i && pick(j, true) }, h("span", {}, s.label), h("b", { class: "num" }));
       t.dataset.key = s.key || "";
@@ -522,7 +524,7 @@ export class Editor {
     const center = (smooth) => row.scrollTo({ left: tools[i].offsetLeft - (row.clientWidth - tools[i].offsetWidth) / 2, behavior: smooth ? "smooth" : "auto" });
     const pick = (j, byUser) => {
       i = j;
-      this.toolAt[id] = j;
+      this.toolAt[id] = specs[j].key || j;
       tools.forEach((t, k) => t.classList.toggle("is-on", k === j));
       const s = specs[j];
       rule.replaceChildren(slider({
@@ -591,8 +593,15 @@ export class Editor {
       if (g.curve) body.push(...this.curvePanel());
       if (g.bw) body.push(h("div", { class: "ed-ln" }), this.switchRow(L("Black & White", "白黒"), "", this.params.bw, (on) => (this.setParam("bw", on), this.commit())));
     }
+    const keep = this.panelGroup === g.id ? this.panel.scrollTop : 0;
+    this.panelGroup = g.id;
     this.panel.replaceChildren(...body);
-    this.panel.scrollTop = 0;
+    this.panel.scrollTop = keep;
+    // ルックのタブに入った時は、選んでいる札を見える所へ寄せる
+    if (g.id === "core" && !keep) {
+      const on = this.panel.querySelector(".ed-lk.is-on"), row = on && on.parentElement;
+      if (row) row.scrollLeft = on.offsetLeft - row.offsetLeft - (row.clientWidth - on.offsetWidth) / 2;
+    }
     if (HIST_GROUPS.includes(g.id)) requestAnimationFrame(() => this.drawHist(this.lastHist));
   }
 
@@ -643,7 +652,7 @@ export class Editor {
       ])),
       // この写真をスマホから消す（Android の確認が 1 回出る）。読み込んだファイル（一覧に無い写真）は消せない
       h("button", { class: "ed-row ed-row-btn", id: "ed-delete", disabled: this.item && this.item.id !== undefined ? null : "disabled", onClick: () => this.deleteThis() },
-        h("span", { class: "ed-row-k" }, L("Delete this photo", "この写真を削除")), h("small", {}, "元の RAW を消します")),
+        h("span", { class: "ed-row-k" }, L("Delete this photo", "この写真を削除")), h("small", {}, "元の RAW を消します。元に戻せません")),
       h("p", { class: "ed-shot num" }, this.shot || ""),
     ];
     if (st.film) return [h("p", { class: "note ed-film-note" }, "写ルンですで現像しています。フィルムと写真屋の処理で描きます。明るい外は、撮った時の光の量のまま写ります。暗い所は、写る明るさまで持ち上げます。"), ...tail];
@@ -757,6 +766,7 @@ export class Editor {
       const now = performance.now(), { hue, sat } = this.params.grading[z], a = (hue * Math.PI) / 180;
       if (now - lastTap < 320) {
         lastTap = 0;
+        drag = null;
         if (sat) {
           setHS(hue, 0);
           this.commit();
@@ -765,7 +775,6 @@ export class Editor {
         }
         return;
       }
-      lastTap = now;
       wheel.setPointerCapture(e.pointerId);
       // 指を動かした分だけ丸が動く（置いた所へ飛ばない）
       drag = { x: e.clientX, y: e.clientY, px: sat * Math.cos(a), py: sat * Math.sin(a), k: 100 / (wheel.clientWidth / 2), moved: false };
@@ -780,6 +789,8 @@ export class Editor {
     });
     const end = () => {
       if (drag && drag.moved) this.commit();
+      // 動かさずに離した時だけ「たたいた」と数える（動かした直後に触り直しても、彩度を 0 に戻さない）
+      lastTap = drag && !drag.moved ? performance.now() : 0;
       drag = null;
       mark();
     };

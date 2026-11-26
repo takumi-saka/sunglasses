@@ -10,18 +10,11 @@
 
 :root {
   --body: #000;
-  --panel: #000;
-  --raise: #101010;
-  --line: #1c1b19;
   --hair: rgba(255,255,255,.18);
   --ink: #fff;
   --sub: rgba(255,255,255,.58);
   --faint: rgba(255,255,255,.3);
   --accent: #f3d78c; /* 麦わら色。いま動かしている値だけに使う */
-  --teal: #3c9c96;
-  --knurl: repeating-conic-gradient(#3d3d3d 0 2.5deg, #121212 2.5deg 5deg);
-  --knurl-line: repeating-linear-gradient(90deg, #4a4a4a 0 1px, transparent 1px 3px);
-  --fade: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
   --mono: "SG Latin", "SG Gothic", system-ui, sans-serif; /* 数字も同じ書体（幅をそろえる機能を使う） */
   --sans: "SG Latin", "SG Gothic", system-ui, "Noto Sans JP", "Noto Sans CJK JP", "Hiragino Sans", sans-serif;
   --edge: 20px; /* 画面の端から内側へ（Android の戻る操作と取り合わないように） */
@@ -39,12 +32,10 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .screen { position: fixed; inset: 0; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
 .screen[hidden] { display: none; }
-.engrave { font-size: 11px; letter-spacing: .14em; color: var(--sub); }
 .note { margin: 8px var(--edge) 14px; color: var(--sub); font-size: 12px; line-height: 1.75; }
 .pill { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--hair); font-size: 13px; }
 .pill.accent { border-color: rgba(255,255,255,.7); color: var(--ink); }
 .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; color: var(--ink); }
-.text-btn { margin: 4px var(--edge) 16px; color: var(--accent); font-size: 13px; padding: 8px 0; }
 .btn-primary { display: block; width: 100%; height: 52px; margin-top: 14px; border-radius: 26px; background: #fff; color: #111; font-weight: 500; font-size: 16px; }
 .btn-primary:active { opacity: .8; }
 
@@ -63,6 +54,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .month-n { font-size: 12.5px; color: rgba(255,255,255,.62); }
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 0 8px; }
 .tile { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 10px; background: #171717; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.grid + .tile.is-hero { margin-top: 20px; }
 .tile.is-hero { display: block; width: calc(100% - 16px); margin: 0 8px; aspect-ratio: 4 / 3; border-radius: 24px; }
 .tile .thumb { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .25s; pointer-events: none; -webkit-user-drag: none; }
 .tile.is-ready .thumb { opacity: 1; }
@@ -130,6 +122,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .ed-look, .ed-badge { flex: 1; min-width: 0; height: 44px; line-height: 44px; text-align: left; font-size: 12.5px; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-look { color: rgba(255,255,255,.75); }
 .ed-badge:not([hidden]) + .ed-look { display: none; }
+/* 全画面の間は下の行が隠れるので、知らせ（補正前など）は上の端に小さく出す */
+.ed.is-full:not([data-badge=""])[data-badge]::after { content: attr(data-badge); position: fixed; left: 50%; top: calc(18px + env(safe-area-inset-top)); z-index: 6; transform: translateX(-50%); padding: 7px 14px; border-radius: 16px; background: rgba(0,0,0,.55); font-size: 12.5px; line-height: 1; white-space: nowrap; pointer-events: none; }
 .ed-badge.is-busy::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 9px; border-radius: 50%; background: #fff; animation: blink 1s infinite; vertical-align: 1px; }
 .ed-one { flex: none; height: 44px; padding: 0 10px; font-size: 12.5px; color: rgba(255,255,255,.6); }
 .ed-cmp { flex: none; opacity: .7; }
@@ -177,10 +171,9 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .sl-zero { position: absolute; left: var(--zero); top: 38px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: rgba(255,255,255,.7); }
 .sl-thumb { position: absolute; top: 0; width: 2px; height: 42px; margin-left: -1px; border-radius: 1px; background: var(--accent); }
 /* 色の向きが分かるように、目盛りの上に細い色の線を引く（色温度・色かぶり・色相だけ） */
-.sl-track-temp::before, .sl-track-tint::before, .sl-track-hue::before { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 2px; border-radius: 1px; opacity: .85; }
+.sl-track-temp::before, .sl-track-tint::before { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 2px; border-radius: 1px; opacity: .85; }
 .sl-track-temp::before { background: linear-gradient(90deg, #5d7fb0, rgba(255,255,255,.25) 50%, #c99a52); }
 .sl-track-tint::before { background: linear-gradient(90deg, #62ad6c, rgba(255,255,255,.25) 50%, #c96ab8); }
-.sl-track-hue::before { background: linear-gradient(90deg, #e05050, #e0c050, #50c050, #50c0c0, #5070e0, #c050c0, #e05050); }
 /* 1 行に収めた小さな形: 名前・細い線・値 */
 .sl-row { display: flex; align-items: center; gap: 16px; height: 44px; padding: 0 24px; }
 .sl-row .sl-head { display: contents; }
@@ -260,7 +253,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .sheet-back.is-on { opacity: 1; }
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; transform: translateY(105%); transition: transform .3s cubic-bezier(.2,.8,.2,1); color: #fff; }
 .sheet.is-on { transform: none; }
-.sheet-in { max-height: 84vh; overflow-y: auto; border-radius: 30px 30px 0 0; background: rgba(27,28,30,.97); box-shadow: 0 -1px 0 rgba(255,255,255,.08); padding: 10px 0 calc(22px + env(safe-area-inset-bottom)); scrollbar-width: none; }
+.sheet-in { max-height: 84vh; overflow-y: auto; border-radius: 30px 30px 0 0; background: #1b1c1e; box-shadow: 0 -1px 0 rgba(255,255,255,.08); padding: 10px 0 calc(22px + env(safe-area-inset-bottom)); scrollbar-width: none; }
 .sheet-grip { width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.25); margin: 0 auto 20px; }
 .sheet-title { padding: 0 24px 12px; font-size: 21px; font-weight: 500; line-height: 1; }
 .sheet-body .btn-primary { width: calc(100% - 48px); margin: 16px 24px 0; }
@@ -276,6 +269,9 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .toast:not(.is-on) { visibility: hidden; opacity: 0; transition: transform .25s cubic-bezier(.2,.8,.2,1), opacity .2s, visibility 0s .25s; }
 .toast.is-on { transform: none; }
 .toast-text { flex: 1; }
+/* 知らせの下にある部品（シャッターなど）は、知らせが出ている間も押せる。知らせの中のボタンだけが指を受ける */
+.toast { pointer-events: none; }
+.toast-btn { pointer-events: auto; }
 /* 一覧では、下の白い丸（撮影）に重ならない高さに出す */
 body:has(#library:not([hidden])) .toast { bottom: calc(118px + env(safe-area-inset-bottom)); }
 .toast-btn { flex: none; color: #fff; font-weight: 700; padding: 4px 2px; }
@@ -310,7 +306,7 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-view.is-flash::after { content: ""; position: absolute; inset: 0; background: #000; opacity: .65; }
 .cam-frame { position: absolute; inset: 0; pointer-events: none; }
 /* 枠の目安: 写る範囲の四隅に、細い角の印だけを置く（外を暗くしない） */
-.cam-frame::before { content: ""; position: absolute; display: none; --c: rgba(255,255,255,.85); --l: 15px; --t: 1.2px;
+.cam-frame::before { content: ""; position: absolute; display: none; box-sizing: border-box; --c: rgba(255,255,255,.85); --l: 15px; --t: 1.2px;
   background: linear-gradient(var(--c), var(--c)) left top / var(--l) var(--t) no-repeat content-box, linear-gradient(var(--c), var(--c)) left top / var(--t) var(--l) no-repeat content-box,
     linear-gradient(var(--c), var(--c)) right top / var(--l) var(--t) no-repeat content-box, linear-gradient(var(--c), var(--c)) right top / var(--t) var(--l) no-repeat content-box,
     linear-gradient(var(--c), var(--c)) left bottom / var(--l) var(--t) no-repeat content-box, linear-gradient(var(--c), var(--c)) left bottom / var(--t) var(--l) no-repeat content-box,
@@ -338,19 +334,23 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-under { position: relative; flex: none; margin-top: auto; display: flex; flex-direction: column; }
 .cam-info { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; height: 60px; padding: 0 24px; }
 .cam-meta { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; font-size: 12px; line-height: 1.35; letter-spacing: .03em; }
+/* 横に倒した時: RAW と残りの枚数も、まとまりごとその場で回す（中身の幅にしてから回す。写真には届かない） */
+.cam-meta { justify-self: start; rotate: var(--rot, 0deg); transition: rotate .25s, translate .25s; }
+html.is-land-cam .cam-meta { width: max-content; max-width: 86px; translate: 0 -12px; }
 .cam-readout, .cam-count { opacity: .62; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* AE/AF ロック・手ぶれの知らせは、残りの枚数の所に麦わら色で出す（写真の上には出さない） */
-.cam-badge { color: var(--accent); white-space: nowrap; }
+.cam-badge { color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cam-badge[hidden] { display: none; }
 .cam-meta:has(.cam-badge:not([hidden])) .cam-count { display: none; }
 /* 焦点距離: 数字を並べ、選んでいる数字を細い丸で囲む */
 .cam-lenses { display: flex; align-items: center; gap: 10px; }
-.cam-lenses .chip { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1.2px solid transparent; border-radius: 50%; font-size: 15px; font-weight: 400; color: #fff; opacity: .58; }
+.cam-lenses .chip { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1.2px solid transparent; border-radius: 50%; font-size: 15px; font-weight: 400; color: #fff; opacity: .58; rotate: var(--rot, 0deg); transition: rotate .25s; }
 .cam-lenses .chip.is-on { opacity: 1; font-weight: 500; border-color: rgba(255,255,255,.85); }
 .cam-histbox { min-width: 0; display: flex; justify-content: flex-end; }
 .cam-info .hist { flex: none; width: 56px; height: 26px; }
 .cam-lensinfo pre { margin: 0 var(--edge) 12px; max-height: 46vh; overflow: auto; font: 11px/1.6 ui-monospace, monospace; white-space: pre-wrap; color: var(--ink); }
 .cam-lensinfo .sheet-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 var(--edge) 12px; }
+.cam-lensinfo .chip { height: 40px; padding: 0 16px; border-radius: 20px; background: rgba(255,255,255,.12); font-size: 13.5px; white-space: nowrap; }
 
 /* 数字の行（S・ISO・WB・Focus・Exposure・Sun Level）: 上に値、下に名前。
    自動に任せている値は薄い字、手で決めた値は白、いま目盛りで動かしている値は麦わら色 */
@@ -390,7 +390,7 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-thumb { justify-self: start; width: 48px; height: 48px; border-radius: 14px; background: rgba(255,255,255,.1) center / cover no-repeat; }
 .cam-shutter { display: grid; place-items: center; width: 74px; height: 74px; border: 2.5px solid #fff; border-radius: 50%; }
 /* 白い丸の中には、タイマーの残りの秒だけを出す */
-.cam-shutter-core { display: grid; place-items: center; width: 59px; height: 59px; border-radius: 50%; background: #fff; color: #111; font-size: 26px; font-weight: 400; line-height: 1; transition: transform .08s; }
+.cam-shutter-core { display: grid; place-items: center; width: 59px; height: 59px; border-radius: 50%; background: #fff; color: #111; font-size: 26px; font-weight: 400; line-height: 1; transition: transform .08s, rotate .25s; rotate: var(--rot, 0deg); }
 .cam-shutter:active .cam-shutter-core { transform: scale(.93); }
 .cam-gear { justify-self: end; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,.12); }
 
@@ -408,16 +408,13 @@ html.is-camera, html.is-camera body { background: transparent; }
 .cam-looks { height: 182px; }
 .cam-look-row { display: flex; justify-content: center; gap: 10px; padding-top: 6px; }
 .cam-look { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 68px; font-size: 12px; }
-.cam-look-cv { display: block; width: 68px; height: 68px; border-radius: 16px; background: rgba(255,255,255,.1); }
+.cam-look-cv { display: block; width: 68px; height: 68px; border-radius: 16px; background: rgba(255,255,255,.1); object-fit: cover; }
 .cam-look.is-on .cam-look-cv { box-shadow: 0 0 0 2px #151515, 0 0 0 3.5px #fff; }
-.cam-look span { line-height: 1; white-space: nowrap; opacity: .55; }
+.cam-look span { line-height: 1; white-space: nowrap; opacity: .55; rotate: var(--rot, 0deg); transition: rotate .25s, translate .25s; }
+/* 横に倒した時: 名前はその場で回す。回すと縦に長くなるので、見本に重ならない所まで下げる */
+html.is-land-cam .cam-look span { translate: 0 16px; }
 .cam-look.is-on span { opacity: 1; font-weight: 500; }
 /* 小さな画には、ルックの色の向きだけを掛ける（目印。本物の写りは上の画に出る） */
-.cam-look[data-look="cinema"] canvas { filter: contrast(1.06) saturate(.84) sepia(.14) brightness(.96); }
-.cam-look[data-look="aftersun3"] canvas { filter: sepia(.5) saturate(1.3) contrast(1.02) brightness(1.02); }
-.cam-look[data-look="deepblue"] canvas { filter: sepia(.45) hue-rotate(165deg) saturate(.9) contrast(1.05); }
-.cam-look[data-look="aqua"] canvas { filter: sepia(.45) hue-rotate(125deg) saturate(.9) brightness(1.03); }
-.cam-look[data-look="warm"] canvas { filter: sepia(.7) saturate(1.5) brightness(.98); }
 .cam-looks-note { margin: 22px 24px 0; font-size: 13px; line-height: 1.8; opacity: .7; }
 /* 設定: 左に名前、右に選ぶ言葉かスイッチ */
 .cam-sets { bottom: 0; }
